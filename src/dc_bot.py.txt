@@ -29,8 +29,8 @@ for d in [PENDING_DIR, PROCESSING_DIR, DONE_DIR, FAILED_DIR]:
 class TaskBot(discord.Client):
     async def setup_hook(self):
         state = load_state()
-        for task_key in state.keys():
-            self.add_view(TaskStatusView(task_key))
+        # for task_key in state.keys():
+        #    self.add_view(TaskStatusView(task_key))
         # polling queue for updates 
         self.bg_task = asyncio.create_task(self.process_queue())
 
@@ -98,22 +98,9 @@ class TaskBot(discord.Client):
         await callback(interaction, task_key, action)
 
     async def callback(self, task_key, interaction: discord.Interaction):
-        _, task_key, action = self.custom_id.split(":")
         ok, message = update_nextcloud_task(task_key, action)
-
-        # update buttons on response
-        if action == "working":
-            self.label = "In-Progress"
-        else:
-            self.label = "Success!"
-
-        self.style = discord.ButtonStyle.secondary
-
-        for item in self.view.children:
-            item.disabled = True
-
-        await interaction.response.edit_message(view=self.view)
-        await interaction.followup.send(message, ephemeral=True)
+        updated_view = TaskStatusView(task_key, disabled=True, chosen_action=action)
+        await interaction.response.edit_message(view=updated_view)
 
 
 def build_bot():

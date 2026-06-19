@@ -26,7 +26,7 @@ class TaskButton(discord.ui.Button):
             custom_id=f"task:{task_key}:{action}",
         )
 
-    # temp; remove after callback handled in TaskBot
+    # dynamic updating by TaskBot
     async def callback(self, interaction: discord.Interaction):
         _, task_key, action = self.custom_id.split(":")
         ok, message = update_nextcloud_task(task_key, action)
