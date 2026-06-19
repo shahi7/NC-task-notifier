@@ -1,4 +1,4 @@
-# TODO: run in background (cron)
+# TODO: run in background (cron/systemd)
 # TODO: implement update_nextcloud
 #!/usr/bin/env python3
 from datetime import datetime, timedelta, timezone
@@ -6,9 +6,10 @@ import os
 import requests
 import asyncio
 import discord
+import json
 from dotenv import load_dotenv
-from src.helpers import cleanup_old_cache_files, parse_nc_datetime, format_notification_text, load_cache, save_cache
-from src.discord_bot import DMClient
+from helpers import cleanup_old_cache_files, parse_nc_datetime, format_notification_text, load_cache, save_cache
+from dc_bot_client import DMClient
 
 
 print("1: script started")
@@ -25,8 +26,8 @@ SIGNAL_SENDER = os.getenv("SIGNAL_SENDER")
 
 DISCORD_BOT_TOKEN = os.getenv("DISCORD_BOT_TOKEN")
 
-USER_MAP_SIGNAL = os.getenv("USER_MAP_SIGNAL")
-USER_MAP_DC = os.getenv("USER_MAP_DC")
+USER_MAP_SIGNAL = json.loads(os.getenv("USER_MAP_SIGNAL", "{}"))
+USER_MAP_DC = json.loads(os.getenv("USER_MAP_DC", "{}"))
 
 print("2: config loaded")
 print("2b: USER_MAP keys =", list(USER_MAP_SIGNAL.keys()))
@@ -37,6 +38,8 @@ def fetch_notifications():
     headers = {
         "OCS-APIRequest": "true",
         "Accept": "application/json",
+        "User-Agent": "nc-discord/1.0 (+requests)",
+        "Connection": "close",
     }
     print("8a: requesting", NEXTCLOUD_URL)
     r = requests.get(
@@ -86,6 +89,26 @@ async def send_discord(text: str, discord_user_id: int, task_key: str):   # <-- 
     client = DMClient(text=text, discord_user_id=discord_user_id, task_key=task_key, intents=intents)
     await client.start(DISCORD_BOT_TOKEN)
 
+"""
+TODO: replace send_discord() -> handoff layer for persistent TaskBot
+QUEUE_DIR = Path("queue/pending")
+QUEUE_DIR.mkdir(parents=True, exist_ok=True)
+
+def enqueue_discord_dm(text: str, discord_user_id: int, task_key: str):
+    job = {
+        "type": "send_task_dm",
+        "discord_user_id": discord_user_id,
+        "text": text,
+        "task_key": task_key,
+        "created_at": datetime.now(timezone.utc).isoformat(),
+    }
+
+    tmp_path = QUEUE_DIR / f"{uuid.uuid4()}.tmp"
+    final_path = QUEUE_DIR / f"{uuid.uuid4()}.json"
+
+    tmp_path.write_text(json.dumps(job, indent=2))
+    tmp_path.rename(final_path)
+"""
 
 def main():
     print("10: entering main")
@@ -134,7 +157,7 @@ def main():
         print("12b: message =", message)
         print("12c: link =", link)
 
-        text = format_notification_text(subject, message)
+        text = format_notification_text(subject, message, notification_id)
         if link:
                 text += f"\n{link}"
 
@@ -142,6 +165,7 @@ def main():
 
         if user in USER_MAP_SIGNAL: send_signal(text, USER_MAP_SIGNAL[user])
         if user in USER_MAP_DC: asyncio.run(send_discord(text, USER_MAP_DC[user], str(notification_id)))
+        # TODO: replace with - enqueue_discord_dm(text, USER_MAP_DC[user], str(notification_id))
         sent_ids.add(notification_id)
         print("12e: added notification_id to sent_ids =", notification_id)
 

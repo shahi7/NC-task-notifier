@@ -26,13 +26,15 @@ def parse_nc_datetime(value):
         return None
     
 
-def format_notification_text(subject: str, message: str) -> str:
-    deadline = ""
+def format_notification_text(subject: str, message: str, task_key: str) -> str:
+    deadline, calendar = ""
     subject = subject.split("(")[0]
 
     for line in message.splitlines():
         line = line.strip()
-        if line.startswith("Date:"):
+        if line.startswith("Calendar:"):
+            calendar = line.replace("Calendar: ", "").strip().lower()
+        elif line.startswith("Date:"):
             date_value = line.replace("Date:", "").strip()
             if " - " in date_value:
                 date_value = date_value.split(" - ")[0].strip()
@@ -41,6 +43,15 @@ def format_notification_text(subject: str, message: str) -> str:
     parts = [subject]
     if deadline:
         parts.append(f"Deadline: {deadline}")
+    if calendar:
+        state = load_state()
+        if task_key not in state:
+            state[task_key] = {}
+        state[task_key].update({
+            "calendar_name": calendar.lower(),
+            "workflow_status": "new",
+        })
+        save_state(state)
 
     return "\n".join(parts)
 

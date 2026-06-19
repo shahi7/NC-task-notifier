@@ -23,7 +23,7 @@ python3 -m venv .venv
 source .venv/bin/activate
 
 python3 -m pip install --upgrade pip
-python3 -m pip install discord.py python-dotenv requests
+python3 -m pip install discord.py python-dotenv requests icalendar caldav
 
 echo "Setup complete."
 echo "Working directory: $SCRIPT_DIR"
