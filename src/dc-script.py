@@ -42,18 +42,23 @@ def fetch_notifications():
         "Connection": "close",
     }
     print("8a: requesting", NEXTCLOUD_URL)
-    r = requests.get(
-        NEXTCLOUD_URL,
-        headers=headers,
-        auth=(NEXTCLOUD_USER, NEXTCLOUD_PASS),
-        timeout=20,
-    )
-    print("8b: response status =", r.status_code)
-    print("8c: raw response text =", r.text[:1000])
-    r.raise_for_status()
-    data = r.json()
+    # intermittent failures recorded; request retried upon cron rerun 
+    try:
+        r = requests.get(
+                NEXTCLOUD_URL,
+                headers=headers,
+                auth=(NEXTCLOUD_USER, NEXTCLOUD_PASS),
+                timeout=20,
+        )
+        print("8b: response status =", r.status_code)
+        print("8c: raw response text =", r.text[:1000])
+        r.raise_for_status()
+        data = r.json()
+    except:
+        print("8x: request failed =", repr(e))
+        return []
+    
     print("8d: parsed json top-level keys =", list(data.keys()))
-
 
     if "ocs" not in data:
         print("8e: missing 'ocs' in response")

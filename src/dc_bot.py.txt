@@ -1,4 +1,4 @@
-# TODO: should run in background
+# TODO: run in background; systemd
 #!/usr/bin/env python3
 import os
 import discord

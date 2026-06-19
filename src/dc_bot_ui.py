@@ -1,7 +1,6 @@
 import discord
 from update_nextcloud import update_nextcloud_task
 
-
 class TaskStatusView(discord.ui.View):
     def __init__(self, task_key: str):
         super().__init__(timeout=None)
