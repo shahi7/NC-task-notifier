@@ -3,7 +3,7 @@ import discord
 from dc_bot_ui import TaskStatusView
 from helpers import load_state, save_state, utc_now_iso
 
-
+# single session DM send
 class DMClient(discord.Client):
     def __init__(self, text: str, discord_user_id: int, task_key: str, **kwargs):
         super().__init__(**kwargs)
@@ -25,7 +25,7 @@ class DMClient(discord.Client):
         finally:
             await self.close()
 
-# first persistent bot attempt
+# first persistent bot attempt; currently unused
 class TaskBot(discord.Client):
     async def setup_hook(self):
         state = load_state()

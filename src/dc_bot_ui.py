@@ -1,3 +1,6 @@
+"""
+Defines UI elements for Discord notifications, and updates UI on user click
+"""
 import discord
 from update_nextcloud import update_nextcloud_task
 
@@ -23,10 +26,12 @@ class TaskButton(discord.ui.Button):
             custom_id=f"task:{task_key}:{action}",
         )
 
+    # temp; remove after callback handled in TaskBot
     async def callback(self, interaction: discord.Interaction):
         _, task_key, action = self.custom_id.split(":")
         ok, message = update_nextcloud_task(task_key, action)
 
+        # update buttons on response
         if action == "working":
             self.label = "In-Progress"
         else:

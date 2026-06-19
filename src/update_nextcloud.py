@@ -1,3 +1,7 @@
+"""
+Updates task state to NextCloud server
+"""
+
 # TODO use object_id, need calendar_name for CALDAV url, need event UID/URL, find color property
 from helpers import load_state, utc_now_iso, save_state
 import caldav
@@ -24,12 +28,14 @@ def update_nextcloud_task(task_key: str, action: str):
 
     object_id = task.get("object_id")
 
+    # fetch user info
     with caldav.DAVClient(
         url=os.getenv("NEXTCLOUD_URL").rstrip("/") + "/remote.php/dav/calendars/" + os.getenv("NEXTCLOUD_USER") + "/",
         username=os.getenv("NEXTCLOUD_USER"),
         password=os.getenv("NEXTCLOUD_PASS")
     ) as client:
         my_principal = client.principal()
+        # finding calendar using name (parsed from notification)
         calendar = next(
             filter(
                 lambda calendar: calendar.name.lower() == state[task_key]["calendar_name"], my_principal.calendars()
@@ -38,11 +44,13 @@ def update_nextcloud_task(task_key: str, action: str):
         if calendar is None:
             raise ValueError("Could not find calendar by the name you provided")
         
+        # fetching event
         event_url = f"{calendar.url}{object_id}.ics"
         event = client.calendar(url=event_url).event_by_url(event_url)
 
         cal = Calendar.from_ical(event.data)
 
+        # locating primary vevent object
         vevent = next(
         (
                 c for c in cal.subcomponents
@@ -54,6 +62,8 @@ def update_nextcloud_task(task_key: str, action: str):
         if vevent is None:
                 return False, "No main VEVENT found."
         
+        # updating event color: CHECK IF WORKING
+        # TODO cannot find color property in docs
         if action == "working":
                 vevent["STATUS"] = vText("TENTATIVE")
                 vevent["COLOR"] = vText("yellow")
@@ -61,7 +71,7 @@ def update_nextcloud_task(task_key: str, action: str):
                 vevent["STATUS"] = vText("CONFIRMED")
                 vevent["COLOR"] = vText("green")
 
-        
+        # syncing updated event
         event.data = cal.to_ical().decode("utf-8")
         event.save()
 

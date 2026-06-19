@@ -1,3 +1,7 @@
+"""
+Parsing, local cache, and local metadata helper functions
+"""
+
 import json
 from datetime import datetime, timezone, timedelta
 from pathlib import Path
@@ -59,7 +63,7 @@ def utc_now_iso():
     return datetime.now(timezone.utc).isoformat()
 
 
-# CACHE
+# CACHE: avoid duplicate notif send
 
 def cleanup_old_cache_files():
     print("3: entering cleanup_old_cache_files")
@@ -98,7 +102,7 @@ def save_cache(ids):
     print("6b: cache saved to", CACHE_FILE)
 
 
-# LOCAL STATE
+# LOCAL STATE: for notif metadata
 
 def load_state():
     if not STATE_FILE.exists():

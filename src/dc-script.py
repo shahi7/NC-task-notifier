@@ -1,3 +1,6 @@
+"""
+Polls NextCloud for new task notifications and queues them in local cache
+"""
 # TODO: run in background (cron/systemd)
 # TODO: implement update_nextcloud
 #!/usr/bin/env python3
@@ -89,7 +92,7 @@ def send_signal(text, recipients):
     print("9f: signal send succeeded")
 
 
-async def send_discord(text: str, discord_user_id: int, task_key: str):   # <-- added task_key
+async def send_discord(text: str, discord_user_id: int, task_key: str):  
     intents = discord.Intents.default()
     client = DMClient(text=text, discord_user_id=discord_user_id, task_key=task_key, intents=intents)
     await client.start(DISCORD_BOT_TOKEN)
@@ -115,10 +118,10 @@ def enqueue_discord_dm(text: str, discord_user_id: int, task_key: str):
     tmp_path.rename(final_path)
 """
 
+# polling for notifs
 def main():
     print("10: entering main")
     cleanup_old_cache_files()
-
 
     sent_ids = load_cache()
     print("10a: sent_ids =", sent_ids)
@@ -168,6 +171,7 @@ def main():
 
         print("12d: final text =", text)
 
+        # send notif via signal + discord
         if user in USER_MAP_SIGNAL: send_signal(text, USER_MAP_SIGNAL[user])
         if user in USER_MAP_DC: asyncio.run(send_discord(text, USER_MAP_DC[user], str(notification_id)))
         # TODO: replace with - enqueue_discord_dm(text, USER_MAP_DC[user], str(notification_id))
