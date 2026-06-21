@@ -4,13 +4,19 @@ Parsing, local cache, and local metadata helper functions
 
 import json
 from datetime import datetime, timezone, timedelta
+import os
 from pathlib import Path
+import requests # type: ignore
 
 STATE_FILE = Path("task_state.json")
 CACHE_KEEP_DAYS = 3
 CACHE_DIR = Path(".")
 TODAY = datetime.now(timezone.utc).date().isoformat()
 CACHE_FILE = CACHE_DIR / f"sent_notifications_{TODAY}.json"
+
+SIGNAL_URL = os.getenv("SIGNAL_URL")
+SIGNAL_SENDER = os.getenv("SIGNAL_SENDER")
+USER_MAP_SIGNAL = json.loads(os.getenv("USER_MAP_SIGNAL", "{}"))
 
 print("2a: CACHE_FILE =", CACHE_FILE)
 
@@ -119,3 +125,19 @@ def load_state():
 
 def save_state(state):
     STATE_FILE.write_text(json.dumps(state, indent=2, sort_keys=True))
+
+
+def notify_delegator(status: str, task_key: str):
+    message, payload = "", ""
+    if status == "working":
+        
+    
+    payload = {
+                "message": f"Task #: {task_key}\n" + message,
+                "number": SIGNAL_SENDER,
+                "recipients": [USER_MAP_SIGNAL["DELEGATOR"]],
+    }
+    print("9c: payload =", payload)
+    r = requests.post(SIGNAL_URL, json=payload, timeout=20)    
+
+    return

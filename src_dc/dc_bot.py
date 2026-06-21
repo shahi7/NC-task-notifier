@@ -5,8 +5,8 @@ and dynamically updating UI
 # TODO: run in background; systemd
 #!/usr/bin/env python3
 import os
-import discord
-from dotenv import load_dotenv
+import discord # type: ignore
+from dotenv import load_dotenv # type: ignore
 from helpers import load_state, save_state, utc_now_iso
 from dc_bot_ui import TaskStatusView
 import asyncio
@@ -89,8 +89,7 @@ def build_bot():
 # persistent run
 def main():
     bot = build_bot()
-    bot.run(DISCORD_BOT_TOKEN)
-
+    bot.run(DISCORD_BOT_TOKEN, reconnect=True)
 
 if __name__ == "__main__":
     main()

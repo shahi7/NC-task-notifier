@@ -1,17 +1,17 @@
 """
-Polls NextCloud for new task notifications and queues them in local cache
+Periodically polls NextCloud for new task notifications and queues them in local cache
 When a notification is found, starts up TaskBot (to send messages)
 """
-# TODO: run in background (cron/systemd)
-# TODO: implement update_nextcloud
+# TODO: schedule in background (cron)
+# TODO: notify delegator 
 #!/usr/bin/env python3
 from datetime import datetime, timedelta, timezone
 import os
 from pathlib import Path
 import uuid
-import requests
+import requests # type: ignore
 import json
-from dotenv import load_dotenv
+from dotenv import load_dotenv # type: ignore
 from src.helpers import cleanup_old_cache_files, parse_nc_datetime, format_notification_text, load_cache, save_cache
 QUEUE_DIR = Path("queue/pending")
 QUEUE_DIR.mkdir(parents=True, exist_ok=True)

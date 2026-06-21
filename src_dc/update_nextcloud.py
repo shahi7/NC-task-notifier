@@ -4,8 +4,8 @@ Updates task state to NextCloud server
 
 # TODO use object_id, need calendar_name for CALDAV url, need event UID/URL, find color property
 from src.helpers import load_state, utc_now_iso, save_state
-import caldav
-from icalendar import Calendar, vText
+import caldav # type: ignore
+from icalendar import Calendar, vText # type: ignore
 import os
 
 def update_nextcloud_task(task_key: str, action: str):
@@ -14,14 +14,22 @@ def update_nextcloud_task(task_key: str, action: str):
     if not task:
         return False, f"Unknown task key: {task_key}"
 
-    task["workflow_status"] = action
-    task["workflow_updated_at"] = utc_now_iso()
-    task["nextcloud_update"] = {
+    # check if action is undone
+    if state["workflow_status"] == action:
+        state["workflow_status"] = ""
+        state["workflow_updated_at"] = utc_now_iso()
+        state["nextcloud_update"] = {
+                "pending": True
+        }
+
+    state["workflow_status"] = action
+    state["workflow_updated_at"] = utc_now_iso()
+    state["nextcloud_update"] = {
         "pending": True,
         "action": action,
-        "object_type": task.get("object_type"),
-        "object_id": task.get("object_id"),
-        "notification_id": task.get("notification_id"),
+        "object_type": state.get("object_type"),
+        "object_id": state.get("object_id"),
+        "notification_id": state.get("notification_id"),
     }
 
     save_state(state)
@@ -64,6 +72,14 @@ def update_nextcloud_task(task_key: str, action: str):
         
         # updating event color: CHECK IF WORKING
         # TODO cannot find color property in docs
+        # handle cancellations
+        if action == "working" and vevent["STATUS"] == vText("TENTATIVE"):
+                vevent["STATUS"] = vText("PENDING")
+                vevent["COLOR"] = vText("blue")
+        elif action == "done" and vevent["STATUS"] == vText("CONFIRMED"):
+                vevent["STATUS"] = vText("PENDING")
+                vevent["COLOR"] = vText("blue")
+        # handle interaction
         if action == "working":
                 vevent["STATUS"] = vText("TENTATIVE")
                 vevent["COLOR"] = vText("yellow")
