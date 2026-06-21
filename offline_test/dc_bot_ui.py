@@ -3,9 +3,9 @@ Defines UI elements for Discord notifications, and updates UI on user click
 """
 # TODO: add undo option
 import discord # type: ignore
-from helpers import load_state
+from offline_test.helpers import load_state
 from update_nextcloud import update_nextcloud_task
-from helpers import notify_delegator
+from offline_test.helpers import notify_delegator
 
 class TaskStatusView(discord.ui.View):
     def __init__(self, task_key: str, disabled: bool = False, chosen_action: str | None = None):
@@ -16,7 +16,7 @@ class TaskStatusView(discord.ui.View):
 
 class TaskButton(discord.ui.Button):
     def __init__(self, task_key: str, action: str, disabled: bool = False, chosen_action: str | None = None):
-        label, style = self.button_state(action, disabled, chosen_action)
+        label, style = self.button_state(action, task_key, disabled, chosen_action)
 
         super().__init__(
             label=label,
@@ -38,8 +38,7 @@ class TaskButton(discord.ui.Button):
         notify_delegator(action, task_key)
 
 
-    def button_state(self, action: str, disabled: bool = False, chosen_action: str | None = None):
-        _, task_key, _ = self.custom_id.split(":")
+    def button_state(self, action: str, task_key: str, disabled: bool = False, chosen_action: str | None = None):
         state = load_state()
        
         if action == "working":

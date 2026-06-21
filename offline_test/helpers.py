@@ -105,8 +105,8 @@ def notify_delegator(button: str, task_key: str):
     state = load_state()
     # fetch discord username of assignee
     DISCORD_BOT_TOKEN = os.getenv("DISCORD_BOT_TOKEN")
-    discord_user_id = state[task_key]["discord_user_id"]
-    r = requests.get(f"https://discord.com/api/v10/users/{state[task_key]["discord_user_id"]}",
+    discord_user_id = str(state[task_key]["discord_user_id"])
+    r = requests.get(f"https://discord.com/api/v10/users/{discord_user_id}",
                  headers={
                           "Authorization": f"Bot {DISCORD_BOT_TOKEN}",
                           "User-Agent": "NCDiscordBot (https://github.com/shahi7/NC-task-notifier, v0.1)"

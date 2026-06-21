@@ -59,7 +59,8 @@ class TaskBot(discord.Client):
                     # de-queueing
                     processing_path.rename(DONE_DIR / processing_path.name)
 
-                except Exception:
+                except Exception as e:
+                    print("queue job failed:", repr(e))
                     processing_path.rename(FAILED_DIR / processing_path.name)
 
             await asyncio.sleep(2)
