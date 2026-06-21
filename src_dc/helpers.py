@@ -132,6 +132,7 @@ def notify_delegator(status: str, task_key: str):
     message, payload, subject = "", "", ""
     state = load_state()
     # fetch discord username of assignee
+    discord_user_id = state[task_key]["discord_user_id"]
     r = requests.get(f"https://discord.com/api/v10/users/{state[task_key][discord_user_id]}",
                  headers={
                           "Authorization": f"Bot {DISCORD_BOT_TOKEN}",
