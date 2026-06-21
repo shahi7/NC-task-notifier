@@ -17,6 +17,7 @@ CACHE_FILE = CACHE_DIR / f"sent_notifications_{TODAY}.json"
 SIGNAL_URL = os.getenv("SIGNAL_URL")
 SIGNAL_SENDER = os.getenv("SIGNAL_SENDER")
 USER_MAP_SIGNAL = json.loads(os.getenv("USER_MAP_SIGNAL", "{}"))
+DISCORD_BOT_TOKEN = os.getenv("DISCORD_BOT_TOKEN")
 
 print("2a: CACHE_FILE =", CACHE_FILE)
 
@@ -53,10 +54,10 @@ def format_notification_text(subject: str, message: str, task_key: str) -> str:
             descr = line
 
     parts = [subject]
-    if deadline:
-        parts.append(f"Deadline: {deadline}")
     if descr:
         parts.append(descr)
+    if deadline:
+        parts.append(f"Deadline: {deadline}")
     if calendar:
         state = load_state()
         if task_key not in state:
@@ -128,16 +129,25 @@ def save_state(state):
 
 
 def notify_delegator(status: str, task_key: str):
-    message, payload = "", ""
+    message, payload, subject = "", "", ""
+    state = load_state()
+    # fetch discord username of assignee
+    r = requests.get(f"https://discord.com/api/v10/users/{state[task_key][discord_user_id]}",
+                 headers={
+                          "Authorization": f"Bot {DISCORD_BOT_TOKEN}",
+                          "User-Agent": "NCDiscordBot (https://github.com/shahi7/NC-task-notifier, v0.1)"
+                })
+    user = r.get("username")
     if status == "working":
-        
-    
+        message = f"@{user} has accepted the following task:\n"
+    subject = state[task_key]["text"].split("Deadline:")[0]
+
     payload = {
-                "message": f"Task #: {task_key}\n" + message,
+                "message": f"Task #: {task_key}\n{subject}" + message,
                 "number": SIGNAL_SENDER,
                 "recipients": [USER_MAP_SIGNAL["DELEGATOR"]],
     }
     print("9c: payload =", payload)
-    r = requests.post(SIGNAL_URL, json=payload, timeout=20)    
+    requests.post(SIGNAL_URL, json=payload, timeout=20)    
 
     return

@@ -28,7 +28,7 @@ for d in [PENDING_DIR, PROCESSING_DIR, DONE_DIR, FAILED_DIR]:
 
 class TaskBot(discord.Client):
     async def setup_hook(self):
-        state = load_state()
+        # state = load_state()
         # for task_key in state.keys():
         #    self.add_view(TaskStatusView(task_key))
         # polling queue for updates 
@@ -77,6 +77,7 @@ class TaskBot(discord.Client):
         state[task_key]["discord_message_id"] = msg.id
         state[task_key]["discord_user_id"] = discord_user_id
         state[task_key]["discord_sent_at"] = utc_now_iso()
+        state[task_key]["text"] = text
         save_state(state)
 
         return msg.id
