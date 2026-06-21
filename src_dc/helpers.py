@@ -31,7 +31,7 @@ def parse_nc_datetime(value):
 
 
 def format_notification_text(subject: str, message: str, task_key: str) -> str:
-    deadline, calendar = "", ""
+    deadline, calendar, descr = "", "", ""
     subject = subject.split("(")[0]
 
     for line in message.splitlines():

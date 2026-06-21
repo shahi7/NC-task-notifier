@@ -81,29 +81,6 @@ class TaskBot(discord.Client):
 
         return msg.id
 
-    # better for dynamic updates; renders single generic task view
-    async def on_interaction(self, interaction: discord.Interaction):
-        data = interaction.data or {}
-        custom_id = data.get("custom_id")
-
-        if not custom_id or not custom_id.startswith("task:"):
-            return
-
-        try:
-            _, task_key, action = custom_id.split(":")
-        except ValueError:
-            await interaction.response.send_message("Bad button payload.", ephemeral=True)
-            return
-
-        await self.callback(interaction, task_key, action)
-
-    # update in nextcloud
-    async def callback(self, task_key, action: discord.Interaction):
-        _, message = update_nextcloud_task(task_key, action)
-        updated_view = TaskStatusView(task_key, disabled=True, chosen_action=action)
-        await action.response.edit_message(view=updated_view)
-        await action.followup.send(message)
-
 
 def build_bot():
     intents = discord.Intents.default()

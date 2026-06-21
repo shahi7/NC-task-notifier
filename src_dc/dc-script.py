@@ -7,13 +7,14 @@ When a notification is found, starts up TaskBot (to send messages)
 #!/usr/bin/env python3
 from datetime import datetime, timedelta, timezone
 import os
+from pathlib import Path
+import uuid
 import requests
-import asyncio
-import discord
 import json
 from dotenv import load_dotenv
 from src.helpers import cleanup_old_cache_files, parse_nc_datetime, format_notification_text, load_cache, save_cache
-from trash.dc_bot_client import DMClient
+QUEUE_DIR = Path("queue/pending")
+QUEUE_DIR.mkdir(parents=True, exist_ok=True)
 
 
 print("1: script started")
@@ -25,16 +26,13 @@ load_dotenv()
 NEXTCLOUD_URL = os.getenv("NEXTCLOUD_URL")
 NEXTCLOUD_USER = os.getenv("NEXTCLOUD_USER")
 NEXTCLOUD_PASS = os.getenv("NEXTCLOUD_PASS")
-SIGNAL_URL = os.getenv("SIGNAL_URL")
-SIGNAL_SENDER = os.getenv("SIGNAL_SENDER")
 
 DISCORD_BOT_TOKEN = os.getenv("DISCORD_BOT_TOKEN")
 
-USER_MAP_SIGNAL = json.loads(os.getenv("USER_MAP_SIGNAL", "{}"))
 USER_MAP_DC = json.loads(os.getenv("USER_MAP_DC", "{}"))
 
 print("2: config loaded")
-print("2b: USER_MAP keys =", list(USER_MAP_SIGNAL.keys()))
+print("2b: USER_MAP keys =", list(USER_MAP_DC.keys()))
 
 
 def fetch_notifications():
@@ -76,33 +74,7 @@ def fetch_notifications():
     return data["ocs"]["data"]
 
 
-def send_signal(text, recipients):
-    print("9: entering send_signal")
-    print("9a: recipients =", recipients)
-    print("9b: message =", text)
-    payload = {
-        "message": text,
-        "number": SIGNAL_SENDER,
-        "recipients": recipients,
-    }
-    print("9c: payload =", payload)
-    r = requests.post(SIGNAL_URL, json=payload, timeout=20)
-    print("9d: signal response status =", r.status_code)
-    print("9e: signal response text =", r.text[:1000])
-    r.raise_for_status()
-    print("9f: signal send succeeded")
-
-
-async def send_discord(text: str, discord_user_id: int, task_key: str):  
-    intents = discord.Intents.default()
-    client = DMClient(text=text, discord_user_id=discord_user_id, task_key=task_key, intents=intents)
-    await client.start(DISCORD_BOT_TOKEN)
-
-"""
-TODO: replace send_discord() -> handoff layer for persistent TaskBot
-QUEUE_DIR = Path("queue/pending")
-QUEUE_DIR.mkdir(parents=True, exist_ok=True)
-
+# handoff layer for persistent TaskBot
 def enqueue_discord_dm(text: str, discord_user_id: int, task_key: str):
     job = {
         "type": "send_task_dm",
@@ -117,7 +89,7 @@ def enqueue_discord_dm(text: str, discord_user_id: int, task_key: str):
 
     tmp_path.write_text(json.dumps(job, indent=2))
     tmp_path.rename(final_path)
-"""
+
 
 # polling for notifs
 def main():
@@ -151,7 +123,7 @@ def main():
         if notification_id in sent_ids:
             print("11f: skipping because already sent")
             continue
-        if user not in USER_MAP_SIGNAL and user not in USER_MAP_DC:
+        if user not in USER_MAP_DC:
             print("11g: skipping because user not in USER_MAP")
             continue
 
@@ -172,10 +144,8 @@ def main():
 
         print("12d: final text =", text)
 
-        # send notif via signal + discord
-        if user in USER_MAP_SIGNAL: send_signal(text, USER_MAP_SIGNAL[user])
-        if user in USER_MAP_DC: asyncio.run(send_discord(text, USER_MAP_DC[user], str(notification_id)))
-        # TODO: replace with - enqueue_discord_dm(text, USER_MAP_DC[user], str(notification_id))
+        # send notif via discord
+        if user in USER_MAP_DC: enqueue_discord_dm(text, USER_MAP_DC[user], str(notification_id))
         sent_ids.add(notification_id)
         print("12e: added notification_id to sent_ids =", notification_id)
 
