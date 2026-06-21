@@ -7,7 +7,7 @@ and dynamically updating UI
 import os
 import discord
 from dotenv import load_dotenv
-from helpers import load_state
+from helpers import load_state, save_state, utc_now_iso
 from dc_bot_ui import TaskStatusView
 import asyncio
 import json
@@ -95,12 +95,14 @@ class TaskBot(discord.Client):
             await interaction.response.send_message("Bad button payload.", ephemeral=True)
             return
 
-        await callback(interaction, task_key, action)
+        await self.callback(interaction, task_key, action)
 
-    async def callback(self, task_key, interaction: discord.Interaction):
-        ok, message = update_nextcloud_task(task_key, action)
+    # update in nextcloud
+    async def callback(self, task_key, action: discord.Interaction):
+        _, message = update_nextcloud_task(task_key, action)
         updated_view = TaskStatusView(task_key, disabled=True, chosen_action=action)
-        await interaction.response.edit_message(view=updated_view)
+        await action.response.edit_message(view=updated_view)
+        await action.followup.send(message)
 
 
 def build_bot():

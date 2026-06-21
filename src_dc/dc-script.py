@@ -1,5 +1,6 @@
 """
 Polls NextCloud for new task notifications and queues them in local cache
+When a notification is found, starts up TaskBot (to send messages)
 """
 # TODO: run in background (cron/systemd)
 # TODO: implement update_nextcloud
@@ -11,8 +12,8 @@ import asyncio
 import discord
 import json
 from dotenv import load_dotenv
-from helpers import cleanup_old_cache_files, parse_nc_datetime, format_notification_text, load_cache, save_cache
-from dc_bot_client import DMClient
+from src.helpers import cleanup_old_cache_files, parse_nc_datetime, format_notification_text, load_cache, save_cache
+from trash.dc_bot_client import DMClient
 
 
 print("1: script started")
@@ -58,7 +59,7 @@ def fetch_notifications():
         r.raise_for_status()
         data = r.json()
     except:
-        print("8x: request failed =", repr(e))
+        print("8x: request failed")
         return []
     
     print("8d: parsed json top-level keys =", list(data.keys()))

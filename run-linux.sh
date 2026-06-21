@@ -13,7 +13,7 @@ Type=simple
 User=$(whoami)
 WorkingDirectory=${SCRIPT_DIR}
 EnvironmentFile=${SCRIPT_DIR}/.env
-ExecStart=${VENV_PYTHON} ${SCRIPT_DIR}/src/discord-script.py
+ExecStart=${VENV_PYTHON} ${SCRIPT_DIR}/src/sig_script.py
 Restart=always
 RestartSec=5
 

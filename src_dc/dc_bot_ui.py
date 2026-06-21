@@ -2,7 +2,7 @@
 Defines UI elements for Discord notifications, and updates UI on user click
 """
 import discord
-from update_nextcloud import update_nextcloud_task
+from src.update_nextcloud import update_nextcloud_task
 
 class TaskStatusView(discord.ui.View):
     def __init__(self, task_key: str):
@@ -29,7 +29,7 @@ class TaskButton(discord.ui.Button):
     # dynamic updating by TaskBot
     async def callback(self, interaction: discord.Interaction):
         _, task_key, action = self.custom_id.split(":")
-        ok, message = update_nextcloud_task(task_key, action)
+        _, message = update_nextcloud_task(task_key, action)
 
         # update buttons on response
         if action == "working":

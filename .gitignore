@@ -1,6 +1,8 @@
 .env
 *.env
 
+trash/
+
 __pycache__/
 *.py[cod]
 *.pyo
