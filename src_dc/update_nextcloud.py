@@ -3,7 +3,7 @@ Updates task state to NextCloud server
 """
 
 # TODO use object_id, need calendar_name for CALDAV url, need event UID/URL, find color property
-from src.helpers import load_state, utc_now_iso, save_state
+from helpers import load_state, utc_now_iso, save_state
 import caldav # type: ignore
 from icalendar import Calendar, vText # type: ignore
 import os

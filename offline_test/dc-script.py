@@ -36,42 +36,71 @@ print("2b: USER_MAP keys =", list(USER_MAP_DC.keys()))
 
 
 def fetch_notifications():
-    print("8: entering fetch_notifications")
-    headers = {
-        "OCS-APIRequest": "true",
-        "Accept": "application/json",
-        "User-Agent": "nc-discord/1.0 (+requests)",
-        "Connection": "close",
-    }
-    print("8a: requesting", NEXTCLOUD_URL)
-    # intermittent failures recorded; request retried upon cron rerun 
-    try:
-        r = requests.get(
-                NEXTCLOUD_URL,
-                headers=headers,
-                auth=(NEXTCLOUD_USER, NEXTCLOUD_PASS),
-                timeout=20,
-        )
-        print("8b: response status =", r.status_code)
-        print("8c: raw response text =", r.text[:1000])
-        r.raise_for_status()
-        data = r.json()
-    except:
-        print("8x: request failed")
-        return []
-    
-    print("8d: parsed json top-level keys =", list(data.keys()))
+    now = datetime.now(timezone.utc).isoformat()
+    test_user = "azshahid2013@gmail.com"  
 
-    if "ocs" not in data:
-        print("8e: missing 'ocs' in response")
-        raise RuntimeError("Invalid OCS response")
-    if data["ocs"]["meta"]["statuscode"] != 200:
-        print("8f: bad OCS status =", data["ocs"]["meta"]["statuscode"])
-        raise RuntimeError(f"Nextcloud returned status {data['ocs']['meta']['statuscode']}")
-
-
-    print("8g: notifications count =", len(data["ocs"]["data"]))
-    return data["ocs"]["data"]
+    return [
+        {
+            "notification_id": "test-1",
+            "user": test_user,
+            "datetime": now,
+            "subject": "Offline test task 1",
+            "message": (
+                "Calendar: test\n"
+                "Description: verify Accept button flow\n"
+                "Date: 2026-06-21 - 10:00"
+            ),
+            "link": "",
+        },
+        {
+            "notification_id": "test-2",
+            "user": test_user,
+            "datetime": now,
+            "subject": "Offline test task 2",
+            "message": (
+                "Calendar: test\n"
+                "Description: verify Mark Completed flow\n"
+                "Date: 2026-06-21 - 11:00"
+            ),
+            "link": "",
+        },
+        {
+            "notification_id": "test-3",
+            "user": test_user,
+            "datetime": now,
+            "subject": "Offline test task 3",
+            "message": (
+                "Calendar: work\n"
+                "Description: verify multiple queued DMs\n"
+                "Date: 2026-06-21 - 12:00"
+            ),
+            "link": "https://example.com/task/3",
+        },
+        {
+            "notification_id": "test-4",
+            "user": test_user,
+            "datetime": now,
+            "subject": "Offline test task 4",
+            "message": (
+                "Calendar: personal\n"
+                "Description: verify state save per task\n"
+                "Date: 2026-06-21 - 13:00"
+            ),
+            "link": "",
+        },
+        {
+            "notification_id": "test-5",
+            "user": test_user,
+            "datetime": now,
+            "subject": "Offline test task 5",
+            "message": (
+                "Calendar: errands\n"
+                "Description: verify delegator Signal notify\n"
+                "Date: 2026-06-21 - 14:00"
+            ),
+            "link": "",
+        },
+    ]
 
 
 # handoff layer for persistent TaskBot
