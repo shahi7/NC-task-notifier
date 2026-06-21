@@ -12,7 +12,7 @@ import uuid
 import requests # type: ignore
 import json
 from dotenv import load_dotenv # type: ignore
-from helpers import cleanup_old_cache_files, parse_nc_datetime, format_notification_text, load_cache, save_cache
+from offline_test.helpers import cleanup_old_cache_files, parse_nc_datetime, format_notification_text, load_cache, save_cache
 QUEUE_DIR = Path("queue/pending")
 QUEUE_DIR.mkdir(parents=True, exist_ok=True)
 

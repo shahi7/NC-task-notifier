@@ -121,10 +121,10 @@ def notify_delegator(button: str, task_key: str):
         message = f"@{user} has accepted the following task:\n"
     # cancel done
     elif button == "done" and state[task_key]["status"] == "pending":
-        message = f"@{user} has cancelled this task:\n" 
+        message = f"@{user} has updated this task to In-Progress:\n" 
     # done 
     elif button == "done":
-        message = f"@{user} has accepted the following task:\n"
+        message = f"@{user} has completed the following task:\n"
        
     subject = state[task_key]["text"].split("Deadline:")[0]
 
