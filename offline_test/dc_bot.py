@@ -8,7 +8,7 @@ import os
 import discord # type: ignore
 from dotenv import load_dotenv # type: ignore
 from helpers import load_state, save_state, utc_now_iso
-from dc_bot_ui import TaskStatusView
+from dc_bot_ui import TaskStatusView, load_buttons, store_buttons
 import asyncio
 import json
 from pathlib import Path
@@ -37,7 +37,7 @@ class TaskBot(discord.Client):
     async def process_queue(self):
         await self.wait_until_ready()
         while not self.is_closed():
-            for path in PENDING_DIR.glob("*.json"):
+            for path in PENDING_DIR.glob("*.json") + FAILED_DIR.glob("*"):
                 processing_path = PROCESSING_DIR/path.name
                 try:
                     path.rename(processing_path)
@@ -68,7 +68,9 @@ class TaskBot(discord.Client):
     # set UI
     async def send_task_dm(self, discord_user_id: int, text: str, task_key: str):
         user = await self.fetch_user(discord_user_id)
-        view = TaskStatusView(task_key)
+        view = TaskStatusView(task_key, label_and_id=load_buttons())
+        store_buttons(f"task:{task_key}:working", "Accept", "working") # for persistence
+        store_buttons(f"task:{task_key}:done", "Mark Completed", "done")
         msg = await user.send(text, view=view)
 
         state = load_state()
