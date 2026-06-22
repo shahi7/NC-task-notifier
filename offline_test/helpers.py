@@ -52,7 +52,7 @@ def format_notification_text(subject: str, message: str, task_key: str) -> str:
         state[task_key] = {}
     if calendar:
         state[task_key]["calendar_name"] = calendar
-    state[task_key].setdefault("workflow_status", "new")
+    state[task_key].setdefault("status", "pending")
     save_state(state)
 
     return "\n".join(parts)
