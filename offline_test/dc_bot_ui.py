@@ -19,7 +19,8 @@ class TaskStatusView(discord.ui.View):
 
         # dynamically create buttons; skip old buttons (for now)
         for label, button_id in label_and_id:
-            if state[task_key]["status"] != "done" and label == "working":
+            # don't render working button if already completed
+            if state[task_key]["status"] == "done" and label == "working":
                   continue
             self.add_item(TaskButton(label=label, custom_id=button_id))
         
