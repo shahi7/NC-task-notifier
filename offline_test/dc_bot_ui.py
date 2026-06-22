@@ -1,7 +1,7 @@
 """
 Defines UI elements for Discord notifications, and updates UI on user click
 """
-# TODO: retry failed, progress bar, stale buttons, clear cache (queue), reflect updates
+# TODO: progress bar, stale buttons, clear cache (queue + buttons), reflect updates from NC end (automatic?)
 import json
 from pathlib import Path
 import uuid
@@ -13,16 +13,17 @@ from helpers import notify_delegator
 QUEUE_DIR = Path("buttons")
 
 class TaskStatusView(discord.ui.View):
-    def __init__(self, task_key: str, label_and_id, clicked: bool = False, chosen_action: str | None = None, ):
+    def __init__(self, task_key: str, label_and_id: dict, clicked: bool = False, chosen_action: str | None = None, ):
         super().__init__(timeout=None)
         state = load_state()
 
         # dynamically create buttons; skip old buttons (for now)
-        for label, button_id in label_and_id:
-            # don't render working button if already completed
-            if state[task_key]["status"] == "done" and label == "working":
-                  continue
-            self.add_item(TaskButton(label=label, custom_id=button_id))
+        for task_key, buttons in label_and_id.items():
+            for label, button_id in buttons:
+                # don't render working button if already completed
+                if state[task_key]["status"] == "done" and label == "working":
+                        continue
+                self.add_item(TaskButton(label=label, custom_id=button_id))
         
               
 class TaskButton(discord.ui.Button):
