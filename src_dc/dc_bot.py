@@ -27,17 +27,29 @@ for d in [PENDING_DIR, PROCESSING_DIR, DONE_DIR, FAILED_DIR]:
 
 class TaskBot(discord.Client):
     async def setup_hook(self):
+        print("setup_hook start")
         # state = load_state()
         # for task_key in state.keys():
         #    self.add_view(TaskStatusView(task_key))
         # polling queue for updates 
+        state = load_state()
+        print("loaded state", list(state.keys()))
+
+        for task_key, task in state.items():
+            print("loaded state", list(state.keys()))
+            message_id = task.get("discord_message_id")
+            if message_id:
+                self.add_view(TaskStatusView(task_key, status=task.get("status")), message_id=message_id)
+                print("added view for", task_key, message_id)
+
+        print("starting bg task")
         self.bg_task = asyncio.create_task(self.process_queue())
 
     # poll queue
     async def process_queue(self):
         await self.wait_until_ready()
         while not self.is_closed():
-            for path in PENDING_DIR.glob("*.json"):
+            for path in list(PENDING_DIR.glob("*.json")) + list(FAILED_DIR.glob("*.json")):
                 processing_path = PROCESSING_DIR/path.name
                 try:
                     path.rename(processing_path)
@@ -59,7 +71,8 @@ class TaskBot(discord.Client):
                     # de-queueing
                     processing_path.rename(DONE_DIR / processing_path.name)
 
-                except Exception:
+                except Exception as e:
+                    print("queue job failed:", repr(e))
                     processing_path.rename(FAILED_DIR / processing_path.name)
 
             await asyncio.sleep(2)
@@ -77,7 +90,6 @@ class TaskBot(discord.Client):
         state[task_key]["discord_user_id"] = discord_user_id
         state[task_key]["discord_sent_at"] = utc_now_iso()
         state[task_key]["text"] = text
-        state[task_key]["status"] = "pending"
         save_state(state)
 
         return msg.id

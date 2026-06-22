@@ -14,22 +14,14 @@ def update_nextcloud_task(task_key: str, action: str):
     if not task:
         return False, f"Unknown task key: {task_key}"
 
-    # check if action is undone
-    if state["workflow_status"] == action:
-        state["workflow_status"] = ""
-        state["workflow_updated_at"] = utc_now_iso()
-        state["nextcloud_update"] = {
-                "pending": True
-        }
-
-    state["workflow_status"] = action
-    state["workflow_updated_at"] = utc_now_iso()
-    state["nextcloud_update"] = {
+    task["status"] = action
+    task["workflow_updated_at"] = utc_now_iso()
+    task["nextcloud_update"] = {
         "pending": True,
         "action": action,
-        "object_type": state.get("object_type"),
-        "object_id": state.get("object_id"),
-        "notification_id": state.get("notification_id"),
+        "object_type": task.get("object_type"),
+        "object_id": task.get("object_id"),
+        "notification_id": task.get("notification_id"),
     }
 
     save_state(state)
@@ -38,7 +30,7 @@ def update_nextcloud_task(task_key: str, action: str):
 
     # fetch user info
     with caldav.DAVClient(
-        url=os.getenv("NEXTCLOUD_URL").rstrip("/") + "/remote.php/dav/calendars/" + os.getenv("NEXTCLOUD_USER") + "/",
+        url=os.getenv("NEXTCLOUD_URL").rstrip("/") + "/remote.php/dav",
         username=os.getenv("NEXTCLOUD_USER"),
         password=os.getenv("NEXTCLOUD_PASS")
     ) as client:
