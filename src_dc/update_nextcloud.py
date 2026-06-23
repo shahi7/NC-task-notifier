@@ -4,7 +4,7 @@ Updates task state to NextCloud server
 
 # TODO use object_id, need calendar_name for CALDAV url, need event UID/URL, find color property
 import os
-import caldav # type: ignore
+from caldav import get_calendar # type: ignore
 from helpers import completed_timestamp, get_client, load_state, utc_now_iso, save_state
 from icalendar import Calendar, vText # type: ignore
 CALENDAR_NAME = os.getenv("CALENDAR_NAME")
@@ -108,7 +108,8 @@ def update_nextcloud_task(task_key: str, action: str):
     event_uid = task.get("event_uid")
 
     # fetch user info
-    with caldav.get_calendar(calendar_name=CALENDAR_NAME, url=CALENDAR_URL) as calendar:
+    with get_client() as client:
+        calendar = client.calendar(url=CALENDAR_URL)
         if calendar:
                 try:
                       todo = calendar.get_todo_by_uid(event_uid)

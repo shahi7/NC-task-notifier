@@ -7,7 +7,7 @@ and queues Discord DMs for TaskBot
 # TODO: allow list of time deltas for notification 
 #!/usr/bin/env python3
 from datetime import datetime, timedelta, timezone
-import caldav # type: ignore
+from caldav import get_calendar # type: ignore
 import os
 from pathlib import Path
 import uuid
@@ -237,16 +237,32 @@ def sync_calendar_search():
 
 def sync_calendar():
     print("8: entering process_calendar_changes")
-    old_token = load_sync_token()
-    print("8a: old_token =", old_token)
 
     changed_items = []
 
-    with caldav.get_calendar(calendar_name=CALENDAR_NAME, url=CALENDAR_URL) as calendar:
-        if calendar:
+    print("before get_calendar", flush=True)
+    with get_client() as client:
+        calendar = client.calendar(url=CALENDAR_URL)
+        print("after get_calendar", flush=True)
+        print("calendar =", repr(calendar), flush=True)
+        print("calendar is None =", calendar is None, flush=True)
+        if calendar is not None:
+            # initializing token
+            old_token = load_sync_token()
+            print("8a: old_token =", old_token)
+            if not old_token:
+                print("8d: no old token yet, saving initial token and skipping initial send")
+                changes = calendar.get_objects(load_objects=True)
+                print("initial sync_token =", repr(getattr(changes, "sync_token", None)), flush=True)
+                save_sync_token(getattr(changes, "sync_token", None))
+                old_token = load_sync_token()
+                print("reloaded token =", repr(old_token), flush=True)
+
             # get new event objects since last sync
             try:
+                print("before get_objects", flush=True)
                 changes = calendar.get_objects(sync_token=old_token, load_objects=True, disable_fallback=True)
+                print("after get_objects", flush=True)
             except Exception as e:
                 print("8x: get_objects failed for", CALENDAR_NAME, repr(e))
 
