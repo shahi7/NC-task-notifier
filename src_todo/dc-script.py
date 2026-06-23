@@ -133,7 +133,7 @@ def parse_vtodo(vtodo):
     description = getattr(vtodo.description, "value", "").strip() if getattr(vtodo, "description", None) else ""
     due = getattr(vtodo.due, "value", None) if getattr(vtodo, "due", None) else None
 
-    deadline_text = due.date().isoformat() if isinstance(dtstart, datetime) else str(dtstart or "")
+    deadline_text = due.date().isoformat() if isinstance(due, datetime) else str(due or "")
 
     parts = [subject]
     if description:
