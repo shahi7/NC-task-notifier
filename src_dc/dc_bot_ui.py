@@ -60,15 +60,18 @@ class TaskButton(discord.ui.Button):
                 new_status = "done"
         print(f"new status: {new_status}\n")
 
+        # view renders before expensive nextcloud operation
+        updated_view = TaskStatusView(task_key, status=new_status)
+        await interaction.edit_original_response(view=updated_view)
+
         # state save (w/ new status) happens in update_nextcloud_task
         try:
                 _, message = await asyncio.to_thread(update_nextcloud_task, task_key, new_status)
         except Exception as e:
                 await interaction.followup.send(f"Nextcloud update failed: {e}", ephemeral=True)
                 return
+        
+        await interaction.followup.send(message, ephemeral=True)
 
         print("updating view\n\n")
-        updated_view = TaskStatusView(task_key, status=new_status)
-        await interaction.edit_original_response(view=updated_view)
-        await interaction.followup.send(message, ephemeral=True)
         await asyncio.to_thread(notify_delegator, action, task_key)
