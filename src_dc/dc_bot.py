@@ -47,7 +47,6 @@ class TaskBot(discord.Client):
 
         for task_key, task in state.items():
             message_id = task.get("discord_message_id")
-            discord
             if message_id and message_id not in self.views_registered_for_message_ids:
                 self.add_view(TaskStatusView(task_key, status=task.get("status")), message_id=message_id)
                 print("added view for", task_key, message_id)
@@ -77,9 +76,15 @@ class TaskBot(discord.Client):
                     # sending DM
                     if job["type"] == "send_task_dm":
                         await self.send_task_dm(
-                            discord_user_id=job["discord_user_id"],
-                            text=job["text"],
-                            task_key=job["task_key"],
+                                discord_user_id=job["discord_user_id"],
+                                text=job["text"],
+                                task_key=job["task_key"],
+                        )
+                    elif job["type"] == "send_task_followup_dm":
+                        await self.send_task_followup_dm(
+                                discord_user_id=job["discord_user_id"],
+                                text=job["text"],
+                                task_key=job["task_key"],
                         )
 
                     # de-queueing
@@ -125,6 +130,35 @@ class TaskBot(discord.Client):
         self.views_registered_for_message_ids.add(msg.id)
 
         return msg.id
+    
+    
+    async def send_task_followup_dm(self, discord_user_id: int, text: str, task_key: str):
+        if discord_user_id is None:
+                return None
+
+        state = load_state()
+        task = state.get(task_key, {})
+        original_message_id = task.get("discord_message_id")
+        if not original_message_id:
+                return await self.send_task_dm(discord_user_id, text, task_key)
+
+        user = self.get_user(discord_user_id) or await self.fetch_user(discord_user_id)
+        channel = user.dm_channel or await user.create_dm()
+
+        subject = task.get("subject", "Task")
+        deadline = task.get("deadline", "")
+        status = task.get("status", "pending")
+
+        reminder = f"Reminder: {subject}\nStatus: {status}"
+        if deadline:
+                reminder += f"\nDeadline: {deadline}"
+
+        try:
+                original_msg = await channel.fetch_message(original_message_id)
+                await channel.send(reminder, reference=original_msg)
+        except discord.NotFound:
+                await channel.send(reminder)
+        return None
 
 
 def build_bot():

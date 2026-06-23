@@ -109,9 +109,9 @@ def should_send_reminder(task: dict, now: datetime, reminder_deltas: list[timede
 
 
 # handoff layer for persistent TaskBot
-def enqueue_discord_dm(text: str, discord_user_id: int, task_key: str):
+def enqueue_discord_dm(text: str, discord_user_id: int, task_key: str, job_type: str = "send_task_dm"):
     job = {
-        "type": "send_task_dm",
+        "type": job_type,
         "discord_user_id": discord_user_id,
         "text": text,
         "task_key": task_key,
@@ -352,15 +352,17 @@ def main():
                 print("13d: reminder not due for", task_key)
                 continue
 
-        task["new"] = False
-
+        
         text = task.get("text", "").strip()
+        job_type = "send_task_dm" if task.get("new") else "send_task_followup_dm"
         for id in task.get("assignees", []):
-            # storing to avoid duplicates, if sent
+            # determining if canonical or followup message is to be sent
             if due != "new":
                 new_state[task_key].setdefault("sent_reminder_deltas", [])
                 new_state[task_key]["sent_reminder_deltas"].append(due)
-            enqueue_discord_dm(text, id, task_key)
+            enqueue_discord_dm(text, id, task_key, job_type)
+
+        new_state[task_key]["new"] = False
         new_state[task_key]["last_deadline_reminder_sent_at"] = now.isoformat()
         print("13e: queued reminder for", task_key)
 

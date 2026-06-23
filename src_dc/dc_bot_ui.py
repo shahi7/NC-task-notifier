@@ -27,6 +27,7 @@ class TaskStatusView(discord.ui.View):
             self.add_item(TaskButton(task_key, "done", "Mark Completed", discord.ButtonStyle.success))
         elif status == "done":
             self.add_item(TaskButton(task_key, "done", "Completed! Click to undo", discord.ButtonStyle.secondary))
+            return
         self.add_item(Completion(task_key, status))
 
 
@@ -105,15 +106,25 @@ class Completion(discord.ui.Select):
         )
 
     async def callback(self, interaction: discord.Interaction):
-        if self.status == "cancelled" or "pending":
+        self.status = task.get("status", self.status)
+        if self.status in ("cancelled", "pending"):
             percentage = 0
         elif self.status == "done":
             percentage = 100
         else:
             percentage = int(self.values[0].split("%")[0])
+
+        if percentage == 0:
+            self.status = "pending"
+        elif percentage == 100:
+            self.status = "done"
+        else:
+            self.status = "working"
+    
         state = load_state()
         task = state.get(str(self.task_key), {})
         base_text = task.get("text", "Task")
+        
         updated_view = TaskStatusView(self.task_key, self.status)
 
         await interaction.response.edit_message(
@@ -126,4 +137,4 @@ def render_progress_bar(percent: int) -> str:
     width = 20
     filled = round(percent / 100 * width)
     empty = width - filled
-    return f"Progress: [{'█' * filled}{'-' * empty}]"
+    return f"Progress: [{'█' * filled}{'░' * empty}]"
