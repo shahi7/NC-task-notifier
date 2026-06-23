@@ -239,6 +239,7 @@ def sync_calendar():
     print("8: entering process_calendar_changes")
 
     changed_items = []
+    changes = []
 
     print("before get_calendar", flush=True)
     with get_client() as client:
