@@ -85,7 +85,7 @@ def update_nextcloud_task_old(task_key: str, action: str):
     return True, f"Marked as **{action}**."
 
 
-def update_nextcloud_task(task_key: str, action: str):
+def update_nextcloud_vTODO(task_key: str, action: str):
     state = load_state()
     task = state.get(task_key)
     if not task:
@@ -137,3 +137,64 @@ def update_nextcloud_task(task_key: str, action: str):
     return True, f"Marked as **{action}**."
 
 
+def update_nextcloud_task(task_key: str, action: str):
+    state = load_state()
+    task = state.get(task_key)
+    if not task:
+        return False, f"Unknown task key: {task_key}"
+
+    completed_timestamp(task_key, action)
+
+    task["status"] = action
+    task["workflow_updated_at"] = utc_now_iso()
+    task["nextcloud_update"] = {
+        "pending": True,
+        "action": action,
+        "object_type": task.get("object_type"),
+        "object_id": task.get("object_id"),
+        "notification_id": task.get("notification_id"),
+    }
+    save_state(state)
+
+    event_uid = task.get("event_uid")
+    if not event_uid:
+        return False, "No saved event_uid for this task."
+
+    with get_client() as client:
+        calendar = client.calendar(url=CALENDAR_URL)
+        if calendar is None:
+            return False, "Calendar not found."
+
+        try:
+            event = calendar.event_by_uid(event_uid)
+        except Exception as e:
+            print("Failed to fetch item as VEVENT", repr(e))
+            return False, f"Event not found for UID {event_uid}"
+
+        with event.edit_vobject_instance() as vobj:
+            vevent = vobj.vevent
+
+            if action == "done":
+                if getattr(vevent, "status", None):
+                    vevent.status.value = "CONFIRMED"
+                else:
+                    vevent.add("status").value = "CONFIRMED"
+            elif action == "working":
+                if getattr(vevent, "status", None):
+                    vevent.status.value = "TENTATIVE"
+                else:
+                    vevent.add("status").value = "TENTATIVE"
+            elif action == "cancelled":
+                if getattr(vevent, "status", None):
+                    vevent.status.value = "CANCELLED"
+                else:
+                    vevent.add("status").value = "CANCELLED"
+            else:
+                if getattr(vevent, "status", None):
+                    vevent.status.value = "TENTATIVE"
+                else:
+                    vevent.add("status").value = "TENTATIVE"
+
+        event.save()
+
+    return True, f"Marked as **{action}**."

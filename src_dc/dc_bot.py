@@ -44,10 +44,8 @@ class TaskBot(discord.Client):
     async def render_persistent_views(self):
         print("setup_hook start")
         state = load_state()
-        print("loaded state", list(state.keys()))
 
         for task_key, task in state.items():
-            print("loaded state", list(state.keys()))
             message_id = task.get("discord_message_id")
             if message_id and message_id not in self.views_registered_for_message_ids:
                 self.add_view(TaskStatusView(task_key, status=task.get("status")), message_id=message_id)
@@ -70,6 +68,11 @@ class TaskBot(discord.Client):
                 try:
                     job = json.loads(processing_path.read_text())
 
+                    if job.get("discord_user_id") is None:
+                        print("dropping invalid job with missing discord_user_id:", job, flush=True)
+                        processing_path.rename(DONE_DIR / processing_path.name)
+                        continue
+
                     # sending DM
                     if job["type"] == "send_task_dm":
                         await self.send_task_dm(
@@ -89,6 +92,11 @@ class TaskBot(discord.Client):
 
     # set UI
     async def send_task_dm(self, discord_user_id: int, text: str, task_key: str):
+        # redundant block; filtered out in process_queue
+        if discord_user_id is None:
+                print("send_task_dm: missing discord_user_id for", task_key, flush=True)
+                return None
+    
         user = await self.fetch_user(discord_user_id)
         view = TaskStatusView(task_key)
         msg = await user.send(text, view=view)

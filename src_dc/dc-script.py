@@ -77,7 +77,7 @@ def parse_deadline_value(value):
     return dt
 
 
-# checks if it is time to send a reminder
+# checks if it is time to send a reminder (check deltas or if task is new)
 def should_send_reminder(task: dict, now: datetime, reminder_delta: timedelta):
     status = task.get("status", "pending")
     if status == "done":
@@ -161,6 +161,7 @@ def store_event(task_key: str, calendar_name: str, event, vevent, text: str):
     state[task_key]["notification_datetime"] = datetime.now(timezone.utc).isoformat()
     state[task_key]["new"] = True
 
+    # storing delegator and assignee discord/signal ids
     ids = []
     assignees = getattr(vevent, "attendee", None)
     if not isinstance(assignees, list): assignees = [assignees]
@@ -251,6 +252,7 @@ def sync_calendar():
             # initializing token
             old_token = load_sync_token()
             print("8a: old_token =", old_token)
+            # load_objects increases immediate overhead but is necessary for accessing vTODOs
             if not old_token:
                 print("8d: no old token yet, saving initial token and skipping initial send")
                 changes = calendar.get_objects(load_objects=True)

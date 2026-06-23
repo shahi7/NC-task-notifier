@@ -163,6 +163,7 @@ def save_state(state):
     STATE_FILE.write_text(json.dumps(normalized, indent=2))
 
 
+# TODO: debug
 def notify_delegator(button: str, task_key: str):
     message, payload, subject = "", "", ""
     state = load_state()
