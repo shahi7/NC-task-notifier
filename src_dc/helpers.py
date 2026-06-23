@@ -268,3 +268,24 @@ def cleanup_old_tasks_and_queue_files(days: int = 30):
                     path.unlink()
             except Exception as e:
                 print("17x: cleanup failed for", str(path), repr(e))
+
+
+def completed_timestamp(task_key, action):
+      state = load_state()
+      task = state.get(task_key)
+
+      if action == "done":
+            task["completed_timestamp"] = utc_now_iso()
+      else:
+            task["completed_timestamp"] = ""
+      return task["completed_timestamp"]
+
+
+def completed(task_key, delta):
+    state = load_state()
+    task = state.get(task_key)
+    cutoff = datetime.now(timezone.utc) - timedelta(days=delta)
+
+    if task.get("completed_timestamp", "") and task["completed_timestamp"] < cutoff:
+        return True
+    return False

@@ -1,19 +1,26 @@
 """
-Periodically polls NextCloud for new task notifications and queues them in local cache
-When a notification is found, starts up TaskBot (to send messages)
+Polls NextCloud calendar via CalDAV sync token for newly created/modified VTODOs
+and queues Discord DMs for TaskBot
 """
-# TODO: schedule in background (cron)
-# TODO: notify delegator 
+# TODO: schedule in background (cron); cron should retry upon ConnectionError 
+# TODO: notify delegator
+# TODO: allow list of time deltas for notification 
 #!/usr/bin/env python3
-from calendar import Calendar
 from datetime import datetime, timedelta, timezone
 import os
 from pathlib import Path
 import uuid
-import requests # type: ignore
 import json
 from dotenv import load_dotenv # type: ignore
-from helpers import cleanup_old_cache_files, get_client, parse_nc_datetime, format_text_and_state, load_cache, save_cache, load_state, save_state, merge_task_into_event_uid
+from helpers import (
+    cleanup_old_cache_files,
+    completed,
+    get_client,
+    load_state,
+    save_state,
+    merge_task_into_event_uid,
+)
+
 QUEUE_DIR = Path("queue/pending")
 QUEUE_DIR.mkdir(parents=True, exist_ok=True)
 SYNC_TOKEN_FILE = Path("calendar_sync_token.txt")
@@ -23,14 +30,12 @@ print("1: script started")
 # use env vars
 load_dotenv(Path(__file__).resolve().parent.parent / ".env")
 
-# Now read from environment
-NEXTCLOUD_URL = os.getenv("NEXTCLOUD_URL")
-NEXTCLOUD_USER = os.getenv("NEXTCLOUD_USER")
-NEXTCLOUD_PASS = os.getenv("NEXTCLOUD_PASS")
+REMINDER_HOURS_BEFORE = int(os.getenv("REMINDER_HOURS_BEFORE", "24"))
+REMINDER_DAYS_BEFORE = int(os.getenv("REMINDER_DAYS_BEFORE", "0"))
 
 DISCORD_BOT_TOKEN = os.getenv("DISCORD_BOT_TOKEN")
-
 USER_MAP_DC = json.loads(os.getenv("USER_MAP_DC", "{}"))
+USER_MAP_SIGNAL = json.loads(os.getenv("USER_MAP_SIGNAL", "{}"))
 
 print("2: config loaded")
 print("2b: USER_MAP keys =", list(USER_MAP_DC.keys()))
@@ -47,161 +52,50 @@ def save_sync_token(token):
         SYNC_TOKEN_FILE.write_text(token)
 
 
-def try_match_existing_event_uid(task_key: str):
-    print("15: entering try_match_existing_event_uid")
-    state = load_state()
-    task = state.get(str(task_key))
-    if not isinstance(task, dict):
-        print("15a: task missing or invalid")
-        return str(task_key)
+def parse_deadline_value(value):
+    if value is None:
+        return None
 
-    for existing_key, existing_task in state.items():
-        # avoid trivial match to self
-        if str(existing_key) == str(task_key):
-            continue
-        if not isinstance(existing_task, dict):
-            continue
+    if isinstance(value, datetime):
+        dt = value
+    else:
+        text = str(value).strip()
+        if not text:
+            return None
+        try:
+            dt = datetime.fromisoformat(text.replace("Z", "+00:00"))
+        except Exception:
+            return None
 
-        # checking all locally stored values
-        if (
-            existing_task.get("subject", "").strip() == task.get("subject", "").strip()
-            and existing_task.get("description", "").strip() == task.get("description", "").strip()
-            and existing_task.get("deadline", "") == task.get("deadline", "")
-            and existing_task.get("calendar_name", "").strip().lower() == task.get("calendar_name", "").strip().lower()
-            and existing_task.get("event_uid", "").strip()
-        ):
-            print("15b: matched existing event_uid =", existing_task.get("event_uid"))
-            task["event_uid"] = existing_task.get("event_uid")
-            task["event_url"] = existing_task.get("event_url", "")
-            save_state(state)
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
 
-            final_task_key = merge_task_into_event_uid(str(task_key), str(existing_task.get("event_uid")))
-            print("15c: final_task_key from existing match =", final_task_key)
-            return final_task_key
-
-    print("15d: no existing event_uid match found")
-    return str(task_key)
+    return dt
 
 
-# TODO: notifications for the SAME event should render as a single persistent message
-# event_uid as key instead of task_key?
-def try_pair_notification_to_event(task_key: str):
-    print("16: entering try_pair_notification_to_event")
-    state = load_state()
-    task = state.get(str(task_key))
-    if not isinstance(task, dict):
-        print("16a: task missing or invalid")
-        return str(task_key)
+# checks if it is time to send a reminder
+def should_send_reminder(task: dict, now: datetime, reminder_delta: timedelta):
+    status = task.get("status", "pending")
+    if status == "done":
+        return False
+    if task.get("new"):
+        return True
 
-    calendar_name = (task.get("calendar_name") or "").strip().lower()
-    object_id = str(task.get("object_id") or "")
-    print("16b: calendar_name =", calendar_name)
-    print("16c: object_id =", object_id)
+    deadline = parse_deadline_value(task.get("deadline"))
+    if not deadline:
+        return False
 
-    if not calendar_name:
-        print("16d: no calendar_name, skipping")
-        return str(task_key)
-    
-    # fast path: maybe this notification already belongs to an existing task
-    # CalDAV requests more expensive
-    local_match_key = try_match_existing_event_uid(str(task_key))
-    if str(local_match_key) != str(task_key):
-        print("16aa: paired using existing local event_uid")
-        return str(local_match_key)
+    reminder_time = deadline - reminder_delta
+    if now < reminder_time:
+        return False
+    # if now > deadline:
+    #    return False
 
-    # using sync tokens to find newly created/modified objects (events and TODOs)
-    old_token = load_sync_token()
-    print("16e: old_token =", old_token)
+    last_sent = parse_deadline_value(task.get("last_deadline_reminder_sent_at"))
+    if last_sent:
+        return False
 
-    with get_client() as client:
-        principal = client.principal()
-        calendar = next(
-            (c for c in principal.calendars() if (c.get_display_name() or "").strip().lower() == calendar_name),
-            None,
-        )
-        if calendar is None:
-            print("16f: calendar not found")
-            return str(task_key)
-        if not old_token:
-            print("16g: no old token yet, saving initial token and skipping match")
-            changes = calendar.get_objects(load_objects=True)
-            save_sync_token(getattr(changes, "sync_token", None))
-            return str(task_key)
-    
-        # getting all new events (new since last sync)
-        changes = calendar.get_objects(sync_token=old_token, load_objects=True, disable_fallback=True)
-        print("changes:\n", changes)
-        
-        candidate = {}
-        matched = False
-        # finding best candidate with matching fields
-        for event in changes:
-                # vobject might be outdated
-                # if not event.vobject_instance.vtodo # only check TODOs
-                #       continue 
-                vevent = event.vobject_instance.vevent # .vevent
-                print("vevent:\n", vevent)
-
-                if (
-                        vevent.summary.value == task["subject"].strip()
-                        and vevent.description.value == task["description"].strip()
-                        and vevent.dstart.value.split(" - ")[0].strip() == task["deadline"] # date only, no time; due.value
-                ):
-                        task["event_uid"] = vevent.uid.value
-                        task["event_url"] = str(event.url)
-                        save_state(state)
-                        matched = True
-                        print("16j: matched candidate, saved event_uid =", candidate["uid"])
-                        break
-
-        # updating sync
-        save_sync_token(getattr(changes, "sync_token", None))
-
-    if not matched:
-        print("No candidate found")
-        return str(task_key)
-
-    final_task_key = merge_task_into_event_uid(str(task_key), task["event_uid"])
-    print("16k: final_task_key =", final_task_key)
-    return final_task_key
-
-
-def fetch_notifications():
-    print("8: entering fetch_notifications")
-    headers = {
-        "OCS-APIRequest": "true",
-        "Accept": "application/json",
-        "User-Agent": "nc-discord/1.0 (+requests)",
-        "Connection": "close",
-    }
-    print("8a: requesting", NEXTCLOUD_URL)
-    # intermittent failures recorded; request retried upon cron rerun 
-    try:
-        r = requests.get(
-                NEXTCLOUD_URL,
-                headers=headers,
-                auth=(NEXTCLOUD_USER, NEXTCLOUD_PASS),
-                timeout=20,
-        )
-        print("8b: response status =", r.status_code)
-        print("8c: raw response text =", r.text[:1000])
-        r.raise_for_status()
-        data = r.json()
-    except Exception as e:
-        print("8x: request failed", repr(e))
-        return []
-    
-    print("8d: parsed json top-level keys =", list(data.keys()))
-
-    if "ocs" not in data:
-        print("8e: missing 'ocs' in response")
-        raise RuntimeError("Invalid OCS response")
-    if data["ocs"]["meta"]["statuscode"] != 200:
-        print("8f: bad OCS status =", data["ocs"]["meta"]["statuscode"])
-        raise RuntimeError(f"Nextcloud returned status {data['ocs']['meta']['statuscode']}")
-
-    print("8g: notifications count =", len(data["ocs"]["data"]))
-    return data["ocs"]["data"]
+    return True
 
 
 # handoff layer for persistent TaskBot
@@ -221,80 +115,183 @@ def enqueue_discord_dm(text: str, discord_user_id: int, task_key: str):
     tmp_path.rename(final_path)
 
 
-# polling for notifs
+# TODO: change to TODO
+def parse_vevent(vevent):
+    print("vevent:\n", vevent)
+    subject = getattr(vevent.summary, "value", "").strip() if getattr(vevent, "summary", None) else "Nextcloud event"
+    location = getattr(vevent.location, "value", "") if getattr(vevent, "location", None) else ""
+    description = getattr(vevent.description, "value", "").strip() if getattr(vevent, "description", None) else ""
+    dtstart = getattr(vevent.dtstart, "value", None) if getattr(vevent, "dtstart", None) else None
+
+    parts = [subject]
+    if description:
+        parts.append(f"Description: {description}")
+    if location:
+        parts.append(f"Location: {location}")
+    if dtstart:
+        parts.append(f"Deadline: {dtstart}")
+
+    return "\n".join(parts), subject, description, dtstart
+
+
+# store event info (importantly, event uid) once vtodo obtained
+def store_event(task_key: str, calendar_name: str, event, vevent, text: str):
+    state = load_state()
+    task_key = str(task_key)
+
+    if task_key not in state:
+        state[task_key] = {}
+
+    state[task_key]["calendar_name"] = (calendar_name or "").strip().lower()
+    state[task_key]["status"] = state[task_key].get("status", "pending")
+    state[task_key]["object_type"] = "caldav_event"
+    state[task_key]["object_id"] = str(getattr(vevent.uid, "value", "") if getattr(vevent, "uid", None) else "")
+    state[task_key]["event_uid"] = str(getattr(vevent.uid, "value", "") if getattr(vevent, "uid", None) else "")
+    state[task_key]["event_url"] = str(getattr(event, "url", ""))
+    state[task_key]["deadline"] = str(getattr(vevent.dtstart, "value", "") if getattr(vevent, "dtstart", None) else "") # .due
+    state[task_key]["location"] = str(getattr(vevent.location, "value", "") if getattr(vevent, "location", None) else "")
+    state[task_key]["subject"] = getattr(vevent.summary, "value", "").strip() if getattr(vevent, "summary", None) else ""
+    state[task_key]["description"] = getattr(vevent.description, "value", "").strip() if getattr(vevent, "description", None) else ""
+    state[task_key]["notification_id"] = task_key
+    state[task_key]["text"] = text
+    state[task_key]["notification_datetime"] = datetime.now(timezone.utc).isoformat()
+    state[task_key]["new"] = True
+
+    ids = []
+    assignees = getattr(vevent, "attendee", None)
+    if not isinstance(assignees, list): assignees = [assignees]
+    for a in assignees:
+        email = str(getattr(a, "value", "")).replace("mailto:", "")
+        ids.append(USER_MAP_DC.get(email))
+    state[task_key]["assignees"] = ids
+
+    organizer = getattr(vevent, "organizer", None)
+    state[task_key]["delegator"] = USER_MAP_SIGNAL.get(str(getattr(organizer, "value", "")).replace("mailto:", "")) \
+        if organizer else ""
+
+    save_state(state)
+
+    print("12x: object_type =", state[task_key]["object_type"])
+    print("12y: object_id =", state[task_key]["object_id"])
+    print("12z: calendar_name =", state[task_key]["calendar_name"])
+
+
+def sync_calendar():
+    print("8: entering process_calendar_changes")
+    old_token = load_sync_token()
+    print("8a: old_token =", old_token)
+
+    changed_items = []
+
+    with get_client() as client:
+        principal = client.principal()
+        calendars = list(principal.calendars())
+        print("8b: calendars found =", len(calendars))
+
+        for calendar in calendars:
+            calendar_name = (calendar.get_display_name() or "").strip().lower()
+            print("8c: checking calendar =", calendar_name)
+
+            if not old_token:
+                print("8d: no old token yet, saving initial token and skipping initial send")
+                changes = calendar.get_objects(load_objects=True)
+                save_sync_token(getattr(changes, "sync_token", None))
+                continue
+
+            # get new event objects since last sync
+            try:
+                changes = calendar.get_objects(sync_token=old_token, load_objects=True, disable_fallback=True)
+            except Exception as e:
+                print("8x: get_objects failed for", calendar_name, repr(e))
+                continue
+
+            print("changes:\n", changes)
+
+            # record new TODOs
+            for event in changes:
+                try:
+                    vevent = event.vobject_instance.vevent
+                    # vtodo = event.get_vobject_instance() # read-only
+                except Exception as e:
+                    print("8y: skipping non-vevent or bad vobject", repr(e))
+                    continue
+
+                print("event candidate:\n", event)
+
+                uid = getattr(vevent.uid, "value", "") if getattr(vevent, "uid", None) else ""
+                if not uid:
+                    print("8z: skipping because missing uid")
+                    continue
+
+                changed_items.append((calendar_name, event, vevent))
+
+            save_sync_token(getattr(changes, "sync_token", None))
+
+    return changed_items
+
+
 def main():
     print("10: entering main")
     cleanup_old_cache_files()
 
-    sent_ids = load_cache()
-    print("10a: sent_ids =", sent_ids)
-    notifications = fetch_notifications()
-    print("10b: fetched notifications =", len(notifications))
-    cutoff = datetime.now(timezone.utc) - timedelta(days=1)
-    print("10c: cutoff =", cutoff.isoformat())
+    changed_items = sync_calendar()
+    print("10b: changed_items =", len(changed_items))
 
+    # first refresh/update local state from any synced calendar changes
+    for calendar_name, event, vevent in changed_items:
+        event_uid = getattr(vevent.uid, "value", "") if getattr(vevent, "uid", None) else ""
+        print("11: raw event_uid =", event_uid)
 
-    for n in notifications:
-        print("11: raw notification =", n)
-        notification_id = n.get("notification_id")
-        user = n.get("user")
-        dt = parse_nc_datetime(n.get("datetime"))
-
-        print("notification =", n)
-        print("11a: notification_id =", notification_id)
-        print("11b: user =", user)
-        print("11c: dt =", dt)
-
-        if not notification_id or not user or not dt:
-            print("11d: skipping because missing notification_id/user/dt")
-            continue
-        if dt < cutoff:
-            print("11e: skipping because dt is older than cutoff")
-            continue
-        if notification_id in sent_ids:
-            print("11f: skipping because already sent")
-            continue
-        if user not in USER_MAP_DC:
-            print("11g: skipping because user not in USER_MAP")
+        if not event_uid:
+            print("11a: skipping because missing uid")
             continue
 
-        print("12: processing notification for user =", user)
-
-        subject = (n.get("subject") or "Nextcloud notification").strip()
-        message = (n.get("message") or "").strip()
-        link = (n.get("link") or "").strip()
-
+        text, subject, description, dtstart = parse_vevent(vevent)
         print("12a: subject =", subject)
-        print("12b: message =", message)
-        print("12c: link =", link)
+        print("12b: description =", description)
+        print("12c: dtstart =", dtstart)
 
-        object_id = n.get("object_id")
-        object_type = n.get("object_type")
-        text = format_text_and_state(subject, message, notification_id, object_id, object_type)
-        state = load_state()
-        if str(notification_id) in state:
-            state[str(notification_id)]["text"] = text
-            save_state(state)
+        store_event(event_uid, calendar_name, event, vevent, text)
+        
+        final_task_key = merge_task_into_event_uid(str(event_uid), str(event_uid))
+        print("12d: synced event into state =", final_task_key)
 
-        # attempt event_uid task key
-        final_task_key = try_pair_notification_to_event(str(notification_id))
+    # then scan all active tasks and send reminders if inside configured window
+    reminder_delta = timedelta(days=REMINDER_DAYS_BEFORE, hours=REMINDER_HOURS_BEFORE)
+    now = datetime.now(timezone.utc)
+    print("13a: now =", now.isoformat())
+    print("13b: reminder_delta =", reminder_delta)
 
-        if link:
-                text += f"\n{link}"
+    state = load_state()
 
-        print("12d: final text =", text)
+    new_state = {}
+    for task_key, task in state.items():
+        if not isinstance(task, dict):
+            continue
 
-        # send notif via discord
-        if user in USER_MAP_DC:
-                enqueue_discord_dm(text, USER_MAP_DC[user], str(final_task_key))
-        sent_ids.add(notification_id)
-        print("12e: added notification_id to sent_ids =", notification_id)
+        # delete stale completed tasks
+        if completed(task_key, 1):
+            print("deleting stale task: ", task_key)
+            continue 
+        new_state[task_key] = task
 
-    save_cache(sent_ids)
+        print("13c: checking task_key =", task_key)
+
+        if not should_send_reminder(task, now, reminder_delta):
+            print("13d: reminder not due for", task_key)
+            continue
+        task["new"] = False
+
+        text = task.get("text", "").strip()
+
+        for id in task.get("assignees", []):
+            enqueue_discord_dm(text, id, str(event_uid))
+        new_state[task_key]["last_deadline_reminder_sent_at"] = now.isoformat()
+        print("13e: queued reminder for", task_key)
+
+    save_state(new_state)
     print("13: main finished")
 
 
 if __name__ == "__main__":
-    print("14: calling main()")
     main()
-    print("15: script finished")

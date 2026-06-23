@@ -3,7 +3,7 @@ Updates task state to NextCloud server
 """
 
 # TODO use object_id, need calendar_name for CALDAV url, need event UID/URL, find color property
-from helpers import get_client, load_state, utc_now_iso, save_state
+from helpers import completed_timestamp, get_client, load_state, utc_now_iso, save_state
 from icalendar import Calendar, vText # type: ignore
 
 def update_nextcloud_task(task_key: str, action: str):
@@ -11,6 +11,8 @@ def update_nextcloud_task(task_key: str, action: str):
     task = state.get(task_key)
     if not task:
         return False, f"Unknown task key: {task_key}"
+
+    completed_timestamp(task_key, action)
 
     task["status"] = action
     task["workflow_updated_at"] = utc_now_iso()
@@ -24,22 +26,47 @@ def update_nextcloud_task(task_key: str, action: str):
 
     save_state(state)
 
-    event_url = task.get("event_url")
+    event_uid = task.get("event_uid")
 
     # fetch user info
     with get_client() as client:
-        if not event_url:
-            return False, "No saved event_url for this task."
+        if not event_uid:
+            return False, "No saved event_uid for this task."
+        
+        calendar_name = task["calendar_name"]
+        principal = client.principal()
+        calendar = next(
+            (c for c in principal.calendars() if (c.get_display_name() or "").strip().lower() == calendar_name),
+            None,
+        )
+        todo = calendar.get_todo_by_uid(event_uid)
+        
+        #        vobj.vevent.status.value = 'COMPLETED'
+        # event.save()
 
-        event = client.event_by_url(event_url)
-        cal = Calendar.from_ical(event.data)
+        with todo.edit_vobject_instance() as vobj:
+                # handle interaction
+                if action == "done":
+                        todo.complete()
+                        vobj.vevent.status.value = 'COMPLETED'
+                # handle cancellations 
+                else:
+                        todo.uncomplete()
+                        if action == "pending":
+                              vobj.vevent.status.value = 'PENDING'
+                        elif action == "working":
+                              vobj.vevent.status.value = 'IN-PROGRESS'
+                        else:
+                              vobj.vevent.status.value = 'CANCELLED'
+                              
+        todo.save()
 
-        # event.complete()
+        
 
         # locating primary vevent object
         vevent = next(
             (
-                c for c in cal.subcomponents
+                c for c in calendar.subcomponents
                 if c.name == "VEVENT" and "RECURRENCE-ID" not in c  # "VTODO"
             ),
             None,
@@ -50,24 +77,7 @@ def update_nextcloud_task(task_key: str, action: str):
         
         # updating event color: CHECK IF WORKING
         # TODO cannot find color property in docs
-        # handle cancellations
-
-        if action == "working" and vevent["STATUS"] == vText("TENTATIVE"):
-                vevent["STATUS"] = vText("PENDING")
-                vevent["COLOR"] = vText("blue")
-        elif action == "done" and vevent["STATUS"] == vText("CONFIRMED"):
-                vevent["STATUS"] = vText("PENDING")
-                vevent["COLOR"] = vText("blue")
-        # handle interaction
-        if action == "working":
-                vevent["STATUS"] = vText("TENTATIVE")
-                vevent["COLOR"] = vText("yellow")
-        elif action == "done":
-                vevent["STATUS"] = vText("CONFIRMED")
-                vevent["COLOR"] = vText("green")
-
-        # syncing updated event
-        event.data = cal.to_ical().decode("utf-8")
-        event.save()
 
     return True, f"Marked as **{action}**."
+
+

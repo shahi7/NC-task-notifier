@@ -2,7 +2,7 @@
 Persistent Discord bot for polling notification queue (updated by dc_script), sending DMs,
 and dynamically updating UI 
 """
-# TODO: run in background; systemd
+# TODO: run in background; systemd (?)
 #!/usr/bin/env python3
 import os
 import discord # type: ignore
@@ -109,6 +109,9 @@ class TaskBot(discord.Client):
         state[task_key]["text"] = text
         save_state(state)
 
+        self.add_view(TaskStatusView(task_key, status=state[task_key].get("status")), message_id=msg.id)
+        self.views_registered_for_message_ids.add(msg.id)
+
         return msg.id
 
 
@@ -116,10 +119,12 @@ def build_bot():
     intents = discord.Intents.default()
     return TaskBot(intents=intents)
 
+
 # persistent run
 def main():
     bot = build_bot()
     bot.run(DISCORD_BOT_TOKEN, reconnect=True)
+
 
 if __name__ == "__main__":
     main()
