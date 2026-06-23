@@ -26,8 +26,22 @@ for d in [PENDING_DIR, PROCESSING_DIR, DONE_DIR, FAILED_DIR]:
     d.mkdir(parents=True, exist_ok=True)
 
 class TaskBot(discord.Client):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.views_registered_for_message_ids = set()
+        self.bg_task = None
+
+
     # on each start (TODO: switch to on reconnect?), render all valid tasks and buttons
     async def setup_hook(self):
+        await self.render_persistent_views()
+        print("starting bg task")
+        if self.bg_task is None or self.bg_task.done():
+            self.bg_task = asyncio.create_task(self.process_queue())
+
+
+    # render function; can also be used in on_resume() or on_ready()
+    async def render_persistent_views(self):
         print("setup_hook start")
         state = load_state()
         print("loaded state", list(state.keys()))
@@ -35,12 +49,11 @@ class TaskBot(discord.Client):
         for task_key, task in state.items():
             print("loaded state", list(state.keys()))
             message_id = task.get("discord_message_id")
-            if message_id:
+            if message_id and message_id not in self.views_registered_for_message_ids:
                 self.add_view(TaskStatusView(task_key, status=task.get("status")), message_id=message_id)
                 print("added view for", task_key, message_id)
+                self.views_registered_for_message_ids.add(message_id)
 
-        print("starting bg task")
-        self.bg_task = asyncio.create_task(self.process_queue())
 
     # poll queue
     async def process_queue(self):

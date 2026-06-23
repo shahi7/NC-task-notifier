@@ -5,6 +5,7 @@ When a notification is found, starts up TaskBot (to send messages)
 # TODO: schedule in background (cron)
 # TODO: notify delegator 
 #!/usr/bin/env python3
+from calendar import Calendar
 from datetime import datetime, timedelta, timezone
 import os
 from pathlib import Path
@@ -115,7 +116,7 @@ def try_pair_notification_to_event(task_key: str):
     with get_client() as client:
         principal = client.principal()
         calendar = next(
-            (c for c in principal.calendars() if (c.name or "").strip().lower() == calendar_name),
+            (c for c in principal.calendars() if (c.get_display_name() or "").strip().lower() == calendar_name),
             None,
         )
         if calendar is None:
@@ -123,35 +124,31 @@ def try_pair_notification_to_event(task_key: str):
             return str(task_key)
         if not old_token:
             print("16g: no old token yet, saving initial token and skipping match")
-            save_sync_token(calendar.get_sync_token())
+            changes = calendar.get_objects(load_objects=True)
+            save_sync_token(getattr(changes, "sync_token", None))
             return str(task_key)
     
         # getting all new events (new since last sync)
-        changes = calendar.objects_by_sync_token(sync_token=old_token)
+        changes = calendar.get_objects(sync_token=old_token, load_objects=True, disable_fallback=True)
+        print("changes:\n", changes)
         
         candidate = {}
         matched = False
         # finding best candidate with matching fields
-        for event in list(changes.new) + list(changes.modified):
-                vevent = event.vobject_instance.vevent
-                # vtodo = event.vobject_instance.vtodo
-                candidate = {
-                        "uid": getattr(vevent, 'uid', None).value if getattr(vevent, 'uid', None) else "",
-                        "summary": getattr(vevent, 'summary', None).value if getattr(vevent, 'summary', None) else "",
-                        "description": getattr(vevent, 'description', None).value if getattr(vevent, 'description', None) else "",
-                        "location": getattr(vevent, 'location', None).value if getattr(vevent, 'location', None) else "",
-                        "deadline": getattr(vevent, 'dtstart', None).value if getattr(vevent, 'dtstart', None) else None
-                }
-
-                print("16h: candidate =", candidate)
+        for event in changes:
+                # vobject might be outdated
+                # if not event.vobject_instance.vtodo # only check TODOs
+                #       continue 
+                vevent = event.vobject_instance.vevent # .vevent
+                print("vevent:\n", vevent)
 
                 if (
-                        candidate["summary"].strip() == task["subject"].strip()
-                        and candidate["description"].strip() == task["description"].strip()
-                        and str(candidate["deadline"])[:10] == task["deadline"] # date only, no time
+                        vevent.summary.value == task["subject"].strip()
+                        and vevent.description.value == task["description"].strip()
+                        and vevent.dstart.value.split(" - ")[0].strip() == task["deadline"] # date only, no time; due.value
                 ):
-                        task["event_uid"] = candidate["uid"]
-                        task["event_url"] = str(getattr(event, "url", ""))
+                        task["event_uid"] = vevent.uid.value
+                        task["event_url"] = str(event.url)
                         save_state(state)
                         matched = True
                         print("16j: matched candidate, saved event_uid =", candidate["uid"])

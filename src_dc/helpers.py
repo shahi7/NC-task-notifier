@@ -27,7 +27,6 @@ NEXTCLOUD_PASS = os.getenv("NEXTCLOUD_PASS")
 NEXTCLOUD_BASE_URL = os.getenv("NEXTCLOUD_BASE_URL")
 
 
-
 def parse_nc_datetime(value):
     if not value:
         return None
@@ -35,7 +34,6 @@ def parse_nc_datetime(value):
         return datetime.fromisoformat(value.replace("Z", "+00:00"))
     except Exception:
         return None
-
 
 
 def format_text_and_state(subject: str, message: str, task_key: str, object_id, object_type) -> str:
@@ -123,10 +121,8 @@ def merge_task_into_event_uid(old_task_key: str, event_uid: str):
     return event_uid
 
 
-
 def utc_now_iso():
     return datetime.now(timezone.utc).isoformat()
-
 
 
 def cleanup_old_cache_files():
@@ -140,7 +136,6 @@ def cleanup_old_cache_files():
             pass
 
 
-
 def load_cache():
     if not CACHE_FILE.exists():
         return set()
@@ -150,10 +145,8 @@ def load_cache():
         return set()
 
 
-
 def save_cache(ids):
     CACHE_FILE.write_text(json.dumps(sorted(str(x) for x in ids), indent=2))
-
 
 
 def load_state():
@@ -165,11 +158,9 @@ def load_state():
         return {}
 
 
-
 def save_state(state):
     normalized = {str(k): v for k, v in state.items()}
     STATE_FILE.write_text(json.dumps(normalized, indent=2))
-
 
 
 def notify_delegator(button: str, task_key: str):
@@ -225,3 +216,55 @@ def get_client():
         ) 
     except Exception as e:
         print(repr(e))
+
+
+# use cron to run monthly
+# important to keep local dataset small; event_uid/task lookups expensive (linear)
+def cleanup_old_tasks_and_queue_files(days: int = 30):
+    cutoff = datetime.now(timezone.utc) - timedelta(days=days)
+    print("17: cleanup cutoff =", cutoff.isoformat())
+
+    state = load_state()
+    kept = {}
+    removed_keys = []
+
+    for task_key, task in state.items():
+        if not isinstance(task, dict):
+            removed_keys.append(task_key)
+            continue
+
+        ts = (
+            task.get("workflow_updated_at")
+            or task.get("discord_sent_at")
+            or task.get("notification_datetime")
+        )
+
+        dt = parse_nc_datetime(ts) if ts else None
+        if dt and dt < cutoff:
+            removed_keys.append(task_key)
+            continue
+
+        kept[task_key] = task
+
+    if removed_keys:
+        print("17a: removing old task keys =", removed_keys)
+    save_state(kept)
+
+    queue_dirs = [
+        Path("queue/pending"),
+        Path("queue/processing"),
+        Path("queue/done"),
+        Path("queue/failed"),
+    ]
+
+    for qdir in queue_dirs:
+        if not qdir.exists():
+            continue
+        for path in qdir.glob("*.json"):
+            try:
+                mtime = datetime.fromtimestamp(path.stat().st_mtime, tz=timezone.utc)
+                if mtime < cutoff:
+                    print("17b: deleting old queue file =", str(path))
+                    path.unlink()
+            except Exception as e:
+                print("17x: cleanup failed for", str(path), repr(e))

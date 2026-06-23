@@ -34,11 +34,13 @@ def update_nextcloud_task(task_key: str, action: str):
         event = client.event_by_url(event_url)
         cal = Calendar.from_ical(event.data)
 
+        # event.complete()
+
         # locating primary vevent object
         vevent = next(
             (
                 c for c in cal.subcomponents
-                if c.name == "VEVENT" and "RECURRENCE-ID" not in c
+                if c.name == "VEVENT" and "RECURRENCE-ID" not in c  # "VTODO"
             ),
             None,
         )
@@ -49,6 +51,7 @@ def update_nextcloud_task(task_key: str, action: str):
         # updating event color: CHECK IF WORKING
         # TODO cannot find color property in docs
         # handle cancellations
+
         if action == "working" and vevent["STATUS"] == vText("TENTATIVE"):
                 vevent["STATUS"] = vText("PENDING")
                 vevent["COLOR"] = vText("blue")
