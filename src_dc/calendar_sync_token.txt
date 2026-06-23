@@ -1,1 +1,1 @@
-http://sabre.io/ns/sync/4
+http://sabre.io/ns/sync/2

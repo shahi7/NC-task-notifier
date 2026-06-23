@@ -7,6 +7,7 @@ and queues Discord DMs for TaskBot
 # TODO: allow list of time deltas for notification 
 #!/usr/bin/env python3
 from datetime import datetime, timedelta, timezone
+import caldav # type: ignore
 import os
 from pathlib import Path
 import uuid
@@ -36,6 +37,9 @@ REMINDER_DAYS_BEFORE = int(os.getenv("REMINDER_DAYS_BEFORE", "0"))
 DISCORD_BOT_TOKEN = os.getenv("DISCORD_BOT_TOKEN")
 USER_MAP_DC = json.loads(os.getenv("USER_MAP_DC", "{}"))
 USER_MAP_SIGNAL = json.loads(os.getenv("USER_MAP_SIGNAL", "{}"))
+
+CALENDAR_NAME = os.getenv("CALENDAR_NAME")
+CALENDAR_URL = os.getenv("CALENDAR_URL")
 
 print("2: config loaded")
 print("2b: USER_MAP keys =", list(USER_MAP_DC.keys()))
@@ -176,7 +180,8 @@ def store_event(task_key: str, calendar_name: str, event, vevent, text: str):
     print("12z: calendar_name =", state[task_key]["calendar_name"])
 
 
-def sync_calendar():
+# searches through calendars
+def sync_calendar_search():
     print("8: entering process_calendar_changes")
     old_token = load_sync_token()
     print("8a: old_token =", old_token)
@@ -224,6 +229,46 @@ def sync_calendar():
                     continue
 
                 changed_items.append((calendar_name, event, vevent))
+
+            save_sync_token(getattr(changes, "sync_token", None))
+
+    return changed_items
+
+
+def sync_calendar():
+    print("8: entering process_calendar_changes")
+    old_token = load_sync_token()
+    print("8a: old_token =", old_token)
+
+    changed_items = []
+
+    with caldav.get_calendar(calendar_name=CALENDAR_NAME, url=CALENDAR_URL) as calendar:
+        if calendar:
+            # get new event objects since last sync
+            try:
+                changes = calendar.get_objects(sync_token=old_token, load_objects=True, disable_fallback=True)
+            except Exception as e:
+                print("8x: get_objects failed for", CALENDAR_NAME, repr(e))
+
+            print("changes:\n", changes)
+
+            # record new TODOs
+            for event in changes:
+                try:
+                    vevent = event.vobject_instance.vevent
+                    # vtodo = event.get_vobject_instance() # read-only
+                except Exception as e:
+                    print("8y: skipping non-vevent or bad vobject", repr(e))
+                    continue
+
+                print("event candidate:\n", event)
+
+                uid = getattr(vevent.uid, "value", "") if getattr(vevent, "uid", None) else ""
+                if not uid:
+                    print("8z: skipping because missing uid")
+                    continue
+
+                changed_items.append((CALENDAR_NAME, event, vevent))
 
             save_sync_token(getattr(changes, "sync_token", None))
 
