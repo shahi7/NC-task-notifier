@@ -2,6 +2,10 @@
 *.env
 
 trash/
+trash
+queue
+queue/
+*.json
 
 __pycache__/
 *.py[cod]

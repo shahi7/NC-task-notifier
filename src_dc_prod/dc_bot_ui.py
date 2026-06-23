@@ -27,7 +27,12 @@ class TaskStatusView(discord.ui.View):
             self.add_item(TaskButton(task_key, "done", "Mark Completed", discord.ButtonStyle.success))
         elif status == "done":
             self.add_item(TaskButton(task_key, "done", "Completed! Click to undo", discord.ButtonStyle.secondary))
-        self.add_item(Completion(task_key, status))
+        embed = discord.Embed(
+                title="", 
+                description=render_progress_bar(percentage),
+                color=discord.Color.blue()
+        )
+        self.add_item(Completion(task_key, "working"))
 
 
 class TaskButton(discord.ui.Button):
@@ -88,12 +93,11 @@ class Completion(discord.ui.Select):
         # set up the menu options
         self.task_key = task_key
         self.status = status
-        # self.percentage = -1
 
         options = [
-            discord.SelectOption(label="25% Completion", value="25"),
-            discord.SelectOption(label="50% Completion", value="50"),
-            discord.SelectOption(label="75% Completion", value="75"),
+            discord.SelectOption(label="0% Completion", description="0% Completion"),
+            discord.SelectOption(label="50% Completion", description="50% Completion"),
+            discord.SelectOption(label="75% Completion", description="75% Completion"),
         ]
 
         super().__init__(
@@ -101,29 +105,19 @@ class Completion(discord.ui.Select):
             min_values=1,
             max_values=1,
             options=options,
-            custom_id=f"completion:{self.task_key}"
         )
 
     async def callback(self, interaction: discord.Interaction):
-        if self.status == "cancelled" or "pending":
-            percentage = 0
-        elif self.status == "done":
-            percentage = 100
-        else:
-            percentage = int(self.values[0].split("%")[0])
-        state = load_state()
-        task = state.get(str(self.task_key), {})
-        base_text = task.get("text", "Task")
-        updated_view = TaskStatusView(self.task_key, self.status)
+        percentage = self.values[0].split("%")[0]
+        updated_view = TaskStatusView(self.task_key, self.status, percentage)
 
         await interaction.response.edit_message(
-            content=f"{base_text}\n\n{render_progress_bar(percentage)}",
+            content=render_progress_bar(percentage),
             view=updated_view,
         )
 
 
 def render_progress_bar(percent: int) -> str:
-    width = 20
-    filled = round(percent / 100 * width)
-    empty = width - filled
-    return f"Progress: [{'█' * filled}{'-' * empty}]"
+    filled = percent // 10
+    empty = 10 - filled
+    return f"[{'█' * filled}{'░' * empty}] {percent}%"

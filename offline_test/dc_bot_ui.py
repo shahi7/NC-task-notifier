@@ -6,7 +6,7 @@ import asyncio
 import json
 from pathlib import Path
 import discord # type: ignore
-from helpers import load_state, save_state
+from helpers import load_state
 from update_nextcloud import update_nextcloud_task
 from helpers import notify_delegator
 
@@ -106,57 +106,5 @@ class TaskButton(discord.ui.Button):
                      style = discord.ButtonStyle.secondary
                 
         return label, style
-    
-
-def render_buttons(task_key: str, clicked: bool = False, chosen_action: str | None = None):
-    data = load_buttons()
-    state = load_state()
-    buttons = []
-    task = state.get(task_key)
-
-    if not task:
-        return []
-
-    for label, button_id in data.get(task_key, []):
-        action = button_id.split(":")[2]
-
-        button_clicked = label not in ["Accept", "Mark Completed"]
-
-        buttons.append(
-            TaskButton(
-                task_key=task_key,
-                action=action,
-                custom_id=button_id,
-                clicked=clicked or button_clicked,
-                chosen_action=chosen_action,
-            )
-        )
-
-    return buttons
-
-
-def load_buttons():
-      BUTTON_DIR.mkdir(parents=True, exist_ok=True)
-      if not BUTTON_FILE.exists():
-          return {}
-      with open(BUTTON_FILE, "r", encoding="utf-8") as f:
-          return json.load(f)
-
-
-def store_buttons(task_key: str, label: str, action: str):
-      data = load_buttons()
-      button = (label, f"task:{task_key}:{action}")
-      if task_key in data and len(data[task_key]) == 2:
-            if action == "working":
-                  data[task_key][0] = button
-            else:
-                  data[task_key][1] = button 
-      else:
-            # first index should store "working" button
-            if task_key not in data: data[task_key] = [button]
-            else: data[task_key].append(button)
-        
-      with open(BUTTON_FILE, "w", encoding="utf-8") as f:
-        json.dump(data, f, indent=2)
 
       

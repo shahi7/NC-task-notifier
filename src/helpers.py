@@ -57,7 +57,7 @@ def format_notification_text(subject: str, message: str, task_key: str) -> str:
             state[task_key] = {}
         state[task_key].update({
             "calendar_name": calendar.lower(),
-            "workflow_status": "new",
+            "status": "pending",
         })
         save_state(state)
 

@@ -2,13 +2,13 @@
 Persistent Discord bot for polling notification queue (updated by dc_script), sending DMs,
 and dynamically updating UI 
 """
-# TODO: run in background; systemd (?)
+# TODO: run in background; systemd 
 #!/usr/bin/env python3
 import os
 import discord # type: ignore
 from dotenv import load_dotenv # type: ignore
 from helpers import load_state, save_state, utc_now_iso
-from dc_bot_ui import TaskStatusView
+from dc_bot_ui import TaskStatusView, render_progress_bar
 import asyncio
 import json
 from pathlib import Path
@@ -47,6 +47,7 @@ class TaskBot(discord.Client):
 
         for task_key, task in state.items():
             message_id = task.get("discord_message_id")
+            discord
             if message_id and message_id not in self.views_registered_for_message_ids:
                 self.add_view(TaskStatusView(task_key, status=task.get("status")), message_id=message_id)
                 print("added view for", task_key, message_id)
@@ -99,7 +100,10 @@ class TaskBot(discord.Client):
     
         user = await self.fetch_user(discord_user_id)
         view = TaskStatusView(task_key)
-        msg = await user.send(text, view=view)
+        msg = await user.send(
+                f"{text}\n\n{render_progress_bar(0)}",
+                view=view
+        )
 
         state = load_state()
         if task_key not in state:

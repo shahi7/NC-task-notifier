@@ -2,7 +2,7 @@
 Persistent Discord bot for polling notification queue (updated by dc_script), sending DMs,
 and dynamically updating UI 
 """
-# TODO: run in background; systemd
+# TODO: run in background; systemd 
 #!/usr/bin/env python3
 import os
 import discord # type: ignore
@@ -13,7 +13,7 @@ import asyncio
 import json
 from pathlib import Path
 
-load_dotenv()
+load_dotenv(Path(__file__).resolve().parent.parent / ".env")
 DISCORD_BOT_TOKEN = os.getenv("DISCORD_BOT_TOKEN")
 
 # storing queued DMs from dc_script polling
@@ -26,24 +26,32 @@ for d in [PENDING_DIR, PROCESSING_DIR, DONE_DIR, FAILED_DIR]:
     d.mkdir(parents=True, exist_ok=True)
 
 class TaskBot(discord.Client):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.views_registered_for_message_ids = set()
+        self.bg_task = None
+
+
+    # on each start (TODO: switch to on reconnect?), render all valid tasks and buttons
     async def setup_hook(self):
+        await self.render_persistent_views()
+        print("starting bg task")
+        if self.bg_task is None or self.bg_task.done():
+            self.bg_task = asyncio.create_task(self.process_queue())
+
+
+    # render function; can also be used in on_resume() or on_ready()
+    async def render_persistent_views(self):
         print("setup_hook start")
-        # state = load_state()
-        # for task_key in state.keys():
-        #    self.add_view(TaskStatusView(task_key))
-        # polling queue for updates 
         state = load_state()
-        print("loaded state", list(state.keys()))
 
         for task_key, task in state.items():
-            print("loaded state", list(state.keys()))
             message_id = task.get("discord_message_id")
-            if message_id:
-                self.add_view(TaskStatusView(task_key, new_status=task.get("status")), message_id=message_id)
+            if message_id and message_id not in self.views_registered_for_message_ids:
+                self.add_view(TaskStatusView(task_key, status=task.get("status")), message_id=message_id)
                 print("added view for", task_key, message_id)
+                self.views_registered_for_message_ids.add(message_id)
 
-        print("starting bg task")
-        self.bg_task = asyncio.create_task(self.process_queue())
 
     # poll queue
     async def process_queue(self):
@@ -59,6 +67,11 @@ class TaskBot(discord.Client):
                 # processing message/queue item
                 try:
                     job = json.loads(processing_path.read_text())
+
+                    if job.get("discord_user_id") is None:
+                        print("dropping invalid job with missing discord_user_id:", job, flush=True)
+                        processing_path.rename(DONE_DIR / processing_path.name)
+                        continue
 
                     # sending DM
                     if job["type"] == "send_task_dm":
@@ -79,6 +92,11 @@ class TaskBot(discord.Client):
 
     # set UI
     async def send_task_dm(self, discord_user_id: int, text: str, task_key: str):
+        # redundant block; filtered out in process_queue
+        if discord_user_id is None:
+                print("send_task_dm: missing discord_user_id for", task_key, flush=True)
+                return None
+    
         user = await self.fetch_user(discord_user_id)
         view = TaskStatusView(task_key)
         msg = await user.send(text, view=view)
@@ -86,11 +104,21 @@ class TaskBot(discord.Client):
         state = load_state()
         if task_key not in state:
                 state[task_key] = {}
+
+        # using only newest msg to render buttons
+        previous_message_id = state[task_key].get("discord_message_id")
+        state[task_key].setdefault("previous_message_ids", [])
+        if previous_message_id and previous_message_id != msg.id:
+            state[task_key]["previous_message_ids"].append(previous_message_id)
+
         state[task_key]["discord_message_id"] = msg.id
         state[task_key]["discord_user_id"] = discord_user_id
         state[task_key]["discord_sent_at"] = utc_now_iso()
         state[task_key]["text"] = text
         save_state(state)
+
+        self.add_view(TaskStatusView(task_key, status=state[task_key].get("status")), message_id=msg.id)
+        self.views_registered_for_message_ids.add(msg.id)
 
         return msg.id
 
@@ -99,10 +127,12 @@ def build_bot():
     intents = discord.Intents.default()
     return TaskBot(intents=intents)
 
+
 # persistent run
 def main():
     bot = build_bot()
     bot.run(DISCORD_BOT_TOKEN, reconnect=True)
+
 
 if __name__ == "__main__":
     main()

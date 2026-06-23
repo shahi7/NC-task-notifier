@@ -3,7 +3,7 @@ Updates task state to NextCloud server
 """
 
 # TODO use object_id, need calendar_name for CALDAV url, need event UID/URL, find color property
-from helpers import load_state, utc_now_iso, save_state
+from src.helpers import load_state, utc_now_iso, save_state
 import caldav
 from icalendar import Calendar, vText
 import os
@@ -14,7 +14,7 @@ def update_nextcloud_task(task_key: str, action: str):
     if not task:
         return False, f"Unknown task key: {task_key}"
 
-    task["workflow_status"] = action
+    task["status"] = action
     task["workflow_updated_at"] = utc_now_iso()
     task["nextcloud_update"] = {
         "pending": True,
