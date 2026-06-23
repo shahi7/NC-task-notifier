@@ -33,6 +33,7 @@ load_dotenv(Path(__file__).resolve().parent.parent / ".env")
 
 REMINDER_HOURS_BEFORE = int(os.getenv("REMINDER_HOURS_BEFORE", "24"))
 REMINDER_DAYS_BEFORE = int(os.getenv("REMINDER_DAYS_BEFORE", "0"))
+REMINDER_DELTAS = json.loads(os.getenv("REMINDER_DELTAS", "[]"))
 
 DISCORD_BOT_TOKEN = os.getenv("DISCORD_BOT_TOKEN")
 USER_MAP_DC = json.loads(os.getenv("USER_MAP_DC", "{}"))
@@ -77,8 +78,14 @@ def parse_deadline_value(value):
     return dt
 
 
+def get_reminder_deltas():
+    if REMINDER_DELTAS:
+        return [timedelta(days=d, hours=h) for d, h in REMINDER_DELTAS]
+    return [timedelta(days=REMINDER_DAYS_BEFORE, hours=REMINDER_HOURS_BEFORE)]
+
+
 # checks if it is time to send a reminder (check deltas or if task is new)
-def should_send_reminder(task: dict, now: datetime, reminder_delta: timedelta):
+def should_send_reminder(task: dict, now: datetime, reminder_deltas: list[timedelta]):
     status = task.get("status", "pending")
     if status == "done":
         return False
@@ -89,17 +96,16 @@ def should_send_reminder(task: dict, now: datetime, reminder_delta: timedelta):
     if not deadline:
         return False
 
-    reminder_time = deadline - reminder_delta
-    if now < reminder_time:
-        return False
-    # if now > deadline:
-    #    return False
+    # avoid duplicate sends
+    sent_deltas = set(task.get("sent_reminder_deltas", []))
 
-    last_sent = parse_deadline_value(task.get("last_deadline_reminder_sent_at"))
-    if last_sent:
-        return False
+    for delta in sorted(reminder_deltas, reverse=True):
+        reminder_time = deadline - delta
+        delta_key = str(delta)
+        if now >= reminder_time and delta_key not in sent_deltas:
+            return delta_key
 
-    return True
+    return None
 
 
 # handoff layer for persistent TaskBot
@@ -321,10 +327,10 @@ def main():
         print("12d: synced event into state =", final_task_key)
 
     # then scan all active tasks and send reminders if inside configured window
-    reminder_delta = timedelta(days=REMINDER_DAYS_BEFORE, hours=REMINDER_HOURS_BEFORE)
+    reminder_deltas = get_reminder_deltas()
     now = datetime.now(timezone.utc)
     print("13a: now =", now.isoformat())
-    print("13b: reminder_delta =", reminder_delta)
+    print("13b: reminder_delta =", reminder_deltas)
 
     state = load_state()
 
@@ -341,15 +347,20 @@ def main():
 
         print("13c: checking task_key =", task_key)
 
-        if not should_send_reminder(task, now, reminder_delta):
-            print("13d: reminder not due for", task_key)
-            continue
+        due = should_send_reminder(task, now, reminder_deltas)
+        if not due:
+                print("13d: reminder not due for", task_key)
+                continue
+
         task["new"] = False
 
         text = task.get("text", "").strip()
-
         for id in task.get("assignees", []):
-            enqueue_discord_dm(text, id, str(event_uid))
+            # storing to avoid duplicates, if sent
+            if due != "new":
+                new_state[task_key].setdefault("sent_reminder_deltas", [])
+                new_state[task_key]["sent_reminder_deltas"].append(due)
+            enqueue_discord_dm(text, id, task_key)
         new_state[task_key]["last_deadline_reminder_sent_at"] = now.isoformat()
         print("13e: queued reminder for", task_key)
 
