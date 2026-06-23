@@ -13,7 +13,7 @@ import asyncio
 import json
 from pathlib import Path
 
-load_dotenv()
+load_dotenv(Path(__file__).resolve().parent.parent / ".env")
 DISCORD_BOT_TOKEN = os.getenv("DISCORD_BOT_TOKEN")
 
 # storing queued DMs from dc_script polling
@@ -26,12 +26,9 @@ for d in [PENDING_DIR, PROCESSING_DIR, DONE_DIR, FAILED_DIR]:
     d.mkdir(parents=True, exist_ok=True)
 
 class TaskBot(discord.Client):
+    # on each start (TODO: switch to on reconnect?), render all valid tasks and buttons
     async def setup_hook(self):
         print("setup_hook start")
-        # state = load_state()
-        # for task_key in state.keys():
-        #    self.add_view(TaskStatusView(task_key))
-        # polling queue for updates 
         state = load_state()
         print("loaded state", list(state.keys()))
 
@@ -86,6 +83,13 @@ class TaskBot(discord.Client):
         state = load_state()
         if task_key not in state:
                 state[task_key] = {}
+
+        # using only newest msg to render buttons
+        previous_message_id = state[task_key].get("discord_message_id")
+        state[task_key].setdefault("previous_message_ids", [])
+        if previous_message_id and previous_message_id != msg.id:
+            state[task_key]["previous_message_ids"].append(previous_message_id)
+
         state[task_key]["discord_message_id"] = msg.id
         state[task_key]["discord_user_id"] = discord_user_id
         state[task_key]["discord_sent_at"] = utc_now_iso()

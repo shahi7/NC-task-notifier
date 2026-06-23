@@ -3,20 +3,17 @@ Defines UI elements for Discord notifications, and updates UI on user click
 """
 # TODO: progress bar, stale buttons, clear cache (queue + buttons), reflect updates from NC end (automatic?)
 import asyncio
-import json
-from pathlib import Path
 import discord # type: ignore
 from helpers import load_state
 from update_nextcloud import update_nextcloud_task
 from helpers import notify_delegator
 
-BUTTON_DIR = Path("buttons")
-BUTTON_FILE = BUTTON_DIR / "buttons.json"
 
 class TaskStatusView(discord.ui.View):
     def __init__(self, task_key: str, status: str = "pending"):
         super().__init__(timeout=None)
 
+        # rendering labels + buttons based on current status of task
         if status == "pending":
             self.add_item(TaskButton(task_key, "working", "Accept", discord.ButtonStyle.primary))
             self.add_item(TaskButton(task_key, "done", "Mark Completed", discord.ButtonStyle.success))
@@ -29,25 +26,28 @@ class TaskStatusView(discord.ui.View):
 
 class TaskButton(discord.ui.Button):
     def __init__(self, task_key, action, label, style):
-
         super().__init__(
                 label=label,
                 style=style,
                 custom_id=f"task:{task_key}:{action}"
-                # disabled=disabled,
         )
 
     async def callback(self, interaction: discord.Interaction):
         print("before defer")
+        # avoid hang from update_nextcloud_task
         await interaction.response.defer()
         print("after defer")
         state = load_state()
 
         _, task_key, action = self.custom_id.split(":")
-        task = state.get(task_key) 
+        task = state.get(task_key)
+        if not isinstance(task, dict):
+            await interaction.followup.send("Task not found.", ephemeral=True)
+            return
 
         current = task.get("status", "pending")
 
+        # updating status 
         if action == "working":
             if current == "pending":
                 new_status = "working"
@@ -60,7 +60,7 @@ class TaskButton(discord.ui.Button):
                 new_status = "done"
         print(f"new status: {new_status}\n")
 
-        # state save in update_nextcloud_task
+        # state save (w/ new status) happens in update_nextcloud_task
         try:
                 _, message = await asyncio.to_thread(update_nextcloud_task, task_key, new_status)
         except Exception as e:
@@ -72,43 +72,3 @@ class TaskButton(discord.ui.Button):
         await interaction.edit_original_response(view=updated_view)
         await interaction.followup.send(message, ephemeral=True)
         await asyncio.to_thread(notify_delegator, action, task_key)
-
-
-    def button_state(self, action: str, task_key: str, clicked: bool = False, chosen_action: str | None = None):
-        state = load_state()
-
-        task = state.get(task_key)
-        if not task:
-                return "Missing task", discord.ButtonStyle.secondary
-        
-        # first render
-        (label, style) = ("Accept", discord.ButtonStyle.primary) \
-                        if action == "working" else \
-                        ("Mark Completed", discord.ButtonStyle.success)
-                
-        # click done twice to change; only marks as done
-        # first button still renders after done
-        # for cancellations TODO not working
-        if clicked:
-                if state[task_key]["status"] == "pending":
-                     if action == "working":
-                          label = "Accept"
-                          style = discord.ButtonStyle.primary
-                     else: # done
-                          label = "Mark Completed"
-                          style = discord.ButtonStyle.success
-                elif state[task_key]["status"] == "working":
-                     if action == "working":
-                          label = "In-Progress! Click to undo"
-                          style = discord.ButtonStyle.secondary
-                     else: # done
-                          label = "Mark Completed"
-                          style = discord.ButtonStyle.success
-                elif state[task_key]["status"] == "done":
-                     # only done button gets rendered
-                     label = "Completed! Click to undo"
-                     style = discord.ButtonStyle.secondary
-                
-        return label, style
-
-      

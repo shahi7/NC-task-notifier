@@ -3,10 +3,8 @@ Updates task state to NextCloud server
 """
 
 # TODO use object_id, need calendar_name for CALDAV url, need event UID/URL, find color property
-from helpers import load_state, utc_now_iso, save_state
-import caldav # type: ignore
+from helpers import get_client, load_state, utc_now_iso, save_state
 from icalendar import Calendar, vText # type: ignore
-import os
 
 def update_nextcloud_task(task_key: str, action: str):
     state = load_state()
@@ -26,37 +24,23 @@ def update_nextcloud_task(task_key: str, action: str):
 
     save_state(state)
 
-    object_id = task.get("object_id")
+    event_url = task.get("event_url")
 
     # fetch user info
-    with caldav.DAVClient(
-        url=os.getenv("NEXTCLOUD_URL").rstrip("/") + "/remote.php/dav",
-        username=os.getenv("NEXTCLOUD_USER"),
-        password=os.getenv("NEXTCLOUD_PASS")
-    ) as client:
-        my_principal = client.principal()
-        # finding calendar using name (parsed from notification)
-        calendar = next(
-            filter(
-                lambda calendar: calendar.name.lower() == state[task_key]["calendar_name"], my_principal.calendars()
-            )
-        )
-        if calendar is None:
-            raise ValueError("Could not find calendar by the name you provided")
-        
-        # fetching event
-        event_url = f"{calendar.url}{object_id}.ics"
-        event = client.calendar(url=event_url).event_by_url(event_url)
+    with get_client() as client:
+        if not event_url:
+            return False, "No saved event_url for this task."
 
+        event = client.event_by_url(event_url)
         cal = Calendar.from_ical(event.data)
 
         # locating primary vevent object
         vevent = next(
-        (
+            (
                 c for c in cal.subcomponents
                 if c.name == "VEVENT" and "RECURRENCE-ID" not in c
-        ),
-        None,
+            ),
+            None,
         )
 
         if vevent is None:
