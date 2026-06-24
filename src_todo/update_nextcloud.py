@@ -83,6 +83,9 @@ def update_nextcloud_task(task_key: str, action: str, deadline: str = ""):
                      task["sent_reminder_deltas"] = []
                      task["last_deadline_reminder_sent_at"] = None
 
+                print(task["status"] )
+                print(action)
+                print(vobj.vtodo.status.value)
                 if task["status"] != action:
                         # handle interaction
                         if action == "done":
@@ -90,12 +93,14 @@ def update_nextcloud_task(task_key: str, action: str, deadline: str = ""):
                                 vobj.vtodo.status.value = 'COMPLETED'
                         # handle cancellations 
                         else:
-                                todo.uncomplete()
+                                if task["status"] == "done": # undo complete
+                                        todo.uncomplete()
+
                                 if action == "pending":
                                         vobj.vtodo.status.value = 'NEEDS-ACTION'
                                 elif action == "working":
                                         vobj.vtodo.status.value = 'IN-PROCESS'
-                                else:
+                                else: # cancelled
                                         vobj.vtodo.status.value = 'CANCELLED'
                                 
         todo.save()
