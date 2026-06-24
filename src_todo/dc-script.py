@@ -20,6 +20,7 @@ from helpers import (
     load_state,
     save_state,
     merge_task_into_event_uid,
+    utc_now_iso,
 )
 
 QUEUE_DIR = Path("queue/pending")
@@ -178,6 +179,11 @@ def store_event(task_key: str, calendar_name: str, event, vtodo, text: str):
     state[task_key]["notification_datetime"] = datetime.now(timezone.utc).isoformat()
     state[task_key]["new"] = True
 
+    # INITIALIZING
+    state[task_key].setdefault("discord_messages", {})
+    state[task_key].setdefault("previous_message_ids", {})
+    state[task_key].setdefault("sent_reminder_deltas", [])
+
     # storing delegator and assignee discord/signal ids
     ids = []
     assignees = list(vtodo.get("CATEGORIES", []))
@@ -246,7 +252,10 @@ def sync_calendar():
                 try:
                     # vtodo = event.vobject_instance.vtodo
                     vtodo = event.get_icalendar_component() # read-only
-                    print(event.get_icalendar_component())
+                    print(event.get_icalendar_component(), "\n")
+                    print(event.get_icalendar_instance(), "\n")
+                    print("vobj: ", event.get_vobject_instance(), "\n")
+                    
                     print("done print")
                 except Exception as e:
                     print("8y: skipping non-vtodo or bad vobject", repr(e))
@@ -285,10 +294,10 @@ def main():
             print("11a: skipping because missing uid")
             continue
 
-        text, subject, description, dtstart = parse_vtodo(vtodo)
+        text, subject, description, deadline = parse_vtodo(vtodo)
         print("12a: subject =", subject)
         print("12b: description =", description)
-        print("12c: dtstart =", dtstart)
+        print("12c: dtstart =", deadline)
 
         store_event(event_uid, calendar_name, event, vtodo, text)
         
@@ -324,15 +333,20 @@ def main():
         
         text = task.get("text", "").strip()
         job_type = "send_task_dm" if task.get("new") else "send_task_followup_dm"
+
         for id in task.get("assignees", []):
             # determining if canonical or followup message is to be sent
             if due != "new":
                 new_state[task_key].setdefault("sent_reminder_deltas", [])
+                # ensuring reminders aren't send upon every sync
+                if due in new_state[task_key]["sent_reminder_deltas"]:
+                        continue
                 new_state[task_key]["sent_reminder_deltas"].append(due)
+                new_state[task_key]["last_deadline_reminder_sent_at"] = utc_now_iso()
+
             enqueue_discord_dm(text, id, task_key, job_type)
 
         new_state[task_key]["new"] = False
-        new_state[task_key]["last_deadline_reminder_sent_at"] = now.isoformat()
         print("13e: queued reminder for", task_key)
 
     save_state(new_state)

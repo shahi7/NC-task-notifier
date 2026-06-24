@@ -112,15 +112,18 @@ class TaskBot(discord.Client):
                 state[task_key] = {}
 
         # using only newest msg to render buttons
-        previous_message_id = state[task_key].get("discord_message_id")
-        state[task_key].setdefault("previous_message_ids", [])
-        if previous_message_id and previous_message_id != msg.id:
-            state[task_key]["previous_message_ids"].append(previous_message_id)
+        # previous_message_id = state[task_key].get("discord_message_id")
+        # state[task_key].setdefault("previous_message_ids", [])
+        # if previous_message_id and previous_message_id != msg.id:
+        #    state[task_key]["previous_message_ids"].append(previous_message_id)
 
-        state[task_key]["discord_message_id"] = msg.id
-        state[task_key]["discord_user_id"] = discord_user_id
-        state[task_key]["discord_sent_at"] = utc_now_iso()
-        state[task_key]["text"] = text
+        task = state.get(task_key, {})
+        task.setdefault("discord_messages", {})
+        task["discord_messages"][str(discord_user_id)] = {
+                "message_id": msg.id,
+                "sent_at": utc_now_iso(),
+        }
+        task["text"] = text
         save_state(state)
 
         self.add_view(TaskStatusView(task_key, status=state[task_key].get("status")), message_id=msg.id)
