@@ -2,7 +2,7 @@
 Polls NextCloud calendar via CalDAV sync token for newly created/modified VTODOs
 and queues Discord DMs for TaskBot
 """
-# TODO: vTODO items; use tags to pick assignees (use CN)
+# TODO: deadline vTODO items; use tags to pick assignees (use CN)
 # TODO: notify assignees upon task update + notify newly added assignees (store multiple discord msg ids)
 # TODO: notify delegator 
 # TODO: test NC server-side updates 
@@ -130,8 +130,12 @@ def parse_vtodo(vtodo):
     print("vtodo:\n", vtodo)
     subject = str(vtodo.get("SUMMARY", "")).strip() or "Nextcloud event"
     description = str(vtodo.get("DESCRIPTION", "")).strip() if vtodo.get("DESCRIPTION") else ""
-    due = vtodo.get("DUE")
     location = str(vtodo.get("LOCATION", "")).strip()
+
+    try:
+        due = vtodo.decoded("DUE") if vtodo.get("DUE") else None
+    except Exception:
+        due = vtodo.get("DUE")
 
     deadline_text = due.date().isoformat() if isinstance(due, datetime) else str(due or "")
 
@@ -177,15 +181,23 @@ def store_event(task_key: str, calendar_name: str, event, vtodo, text: str):
     # storing delegator and assignee discord/signal ids
     ids = []
     assignees = list(vtodo.get("CATEGORIES", []))
-    if not isinstance(assignees, list): assignees = [assignees]
+    if assignees:
+        try:
+            print("1", list(assignees.cats))
+        except Exception:
+            try:
+                print("2", list(assignees))
+            except Exception:
+                print("3", [str(assignees)])
     for a in assignees:
-        name = str(getattr(a, "value", ""))
+        name = str(a)
         ids.append(USER_MAP_DC.get(name))
     state[task_key]["assignees"] = ids
 
-    organizer = getattr(vtodo, "organizer", None)
-    state[task_key]["delegator"] = USER_MAP_SIGNAL.get(str(getattr(organizer, "value", "")).replace("mailto:", "")) \
-        if organizer else ""
+    # organizer = getattr(vtodo, "organizer", None)
+    # state[task_key]["delegator"] = USER_MAP_SIGNAL.get(str(getattr(organizer, "value", "")).replace("mailto:", "")) \
+    #    if organizer else ""
+    # print(organizer)
 
     save_state(state)
 
