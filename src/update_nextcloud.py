@@ -3,76 +3,120 @@ Updates task state to NextCloud server
 """
 
 # TODO use object_id, need calendar_name for CALDAV url, need event UID/URL, find color property
-from src.helpers import load_state, utc_now_iso, save_state
-import caldav
-from icalendar import Calendar, vText
+import asyncio
+from datetime import datetime
 import os
+import requests # type: ignore
+from helpers import completed_timestamp, get_client, load_state, utc_now_iso, save_state
+from caldav.calendarobjectresource import Todo # type: ignore
+print(Todo)
 
-def update_nextcloud_task(task_key: str, action: str):
+CALENDAR_NAME = os.getenv("CALENDAR_NAME")
+CALENDAR_URL = os.getenv("CALENDAR_URL")
+
+RETRYABLE_ERRORS = (
+    ConnectionError,
+    TimeoutError,
+    requests.exceptions.ConnectionError,
+    requests.exceptions.Timeout,
+)
+
+# in case of temporary server-side connection errors
+async def update_and_retry(task_key: str, new_status: str, deadline: str = "", retries: int = 5):
+    last_exc = None
+    for attempt in range(retries):
+        try:
+            return await asyncio.to_thread(update_nextcloud_task, task_key, new_status, deadline)
+        except RETRYABLE_ERRORS as e:
+            last_exc = e
+            if attempt == retries - 1:
+                break
+            await asyncio.sleep(2 ** attempt)   # 1s, 2s, 4s
+    raise last_exc
+
+
+def update_nextcloud_task(task_key: str, action: str = "", deadline: str = ""):
     state = load_state()
     task = state.get(task_key)
     if not task:
-        return False, f"Unknown task key: {task_key}"
+        return False, "Task not found."
 
-    task["status"] = action
-    task["workflow_updated_at"] = utc_now_iso()
-    task["nextcloud_update"] = {
-        "pending": True,
-        "action": action,
-        "object_type": task.get("object_type"),
-        "object_id": task.get("object_id"),
-        "notification_id": task.get("notification_id"),
-    }
+    completed_timestamp(task_key, action)
 
-    save_state(state)
+    event_uid = task.get("event_uid")
+    if not event_uid:
+        return False, "Event ID not found."
 
-    object_id = task.get("object_id")
-
-    # fetch user info
-    with caldav.DAVClient(
-        url=os.getenv("NEXTCLOUD_URL").rstrip("/") + "/remote.php/dav/calendars/" + os.getenv("NEXTCLOUD_USER") + "/",
-        username=os.getenv("NEXTCLOUD_USER"),
-        password=os.getenv("NEXTCLOUD_PASS")
-    ) as client:
-        my_principal = client.principal()
-        # finding calendar using name (parsed from notification)
-        calendar = next(
-            filter(
-                lambda calendar: calendar.name.lower() == state[task_key]["calendar_name"], my_principal.calendars()
-            )
-        )
+    with get_client() as client:
+        calendar = client.calendar(url=CALENDAR_URL)
         if calendar is None:
-            raise ValueError("Could not find calendar by the name you provided")
-        
-        # fetching event
-        event_url = f"{calendar.url}{object_id}.ics"
-        event = client.calendar(url=event_url).event_by_url(event_url)
+            return False, "Calendar not found."
 
-        cal = Calendar.from_ical(event.data)
+        # get event object (encapsulating vTODO) by UID first?
+        try:
+            # constructing and loading Todo via URL; UID lookup failing
+            todo = Todo(client=client, url=task.get("event_url"), parent=calendar)
+            todo.load()
+            # up-to-date UID
+            print(todo)
+            print(task["event_uid"])
+            task["event_uid"] = todo.id
+            print(task["event_uid"])
+            # TODO: use .data/get_data() and icalendar to parse raw ics string for UID
+            # todo = calendar.get_todo_by_uid(event_uid)
+            # print(todo)
+            # todo = calendar.search(todo=True, uid=event_uid)
+        except Exception as e:
+            print("Failed to fetch item as VTODO", repr(e))
+            return False, ""
 
-        # locating primary vevent object
-        vevent = next(
-        (
-                c for c in cal.subcomponents
-                if c.name == "VEVENT" and "RECURRENCE-ID" not in c
-        ),
-        None,
-        )
+        # edit_icalendar_instance() alt
+        with todo.edit_vobject_instance() as vobj:
+                # update deadline
+                if deadline:
+                     new_due = datetime.fromisoformat(deadline)
+                     vt = vobj.vtodo
+                     if hasattr(vt, "due"):
+                         vt.due.value = new_due
+                     else:
+                         vt.add("due").value = new_due
+                     # fresh reminder deltas for new deadline
+                     task["sent_reminder_deltas"] = []
+                     task["last_deadline_reminder_sent_at"] = None
 
-        if vevent is None:
-                return False, "No main VEVENT found."
-        
-        # updating event color: CHECK IF WORKING
-        # TODO cannot find color property in docs
-        if action == "working":
-                vevent["STATUS"] = vText("TENTATIVE")
-                vevent["COLOR"] = vText("yellow")
-        elif action == "done":
-                vevent["STATUS"] = vText("CONFIRMED")
-                vevent["COLOR"] = vText("green")
+                if action:
+                        print(task["status"] )
+                        print(action)
+                        print(vobj.vtodo.status.value)
+                        if task["status"] != action:
+                                # handle interaction
+                                if action == "done":
+                                        todo.complete()
+                                        vobj.vtodo.status.value = 'COMPLETED'
+                                # handle cancellations 
+                                else:
+                                        if task["status"] == "done": # undo complete
+                                                todo.uncomplete()
 
-        # syncing updated event
-        event.data = cal.to_ical().decode("utf-8")
-        event.save()
+                                        if action == "pending":
+                                                vobj.vtodo.status.value = 'NEEDS-ACTION'
+                                        elif action == "working":
+                                                vobj.vtodo.status.value = 'IN-PROCESS'
+                                        else: # cancelled
+                                                vobj.vtodo.status.value = 'CANCELLED'
+                                
+        todo.save()
 
-    return True, f"Mark as **{action}**."
+        if action: task["status"] = action
+        task["workflow_updated_at"] = utc_now_iso()
+        task["nextcloud_update"] = {
+                "pending": True,
+                "action": action,
+                "object_type": task.get("object_type"),
+                "object_id": task.get("object_id"),
+                "notification_id": task.get("notification_id"),
+        }
+        if deadline: task["deadline"] = deadline
+        save_state(state)
+
+    return True, f"Marked as **{action}**."
