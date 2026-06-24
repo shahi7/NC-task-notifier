@@ -6,6 +6,7 @@ and queues Discord DMs for TaskBot
 # TODO: notify assignees upon task update + notify newly added assignees (store multiple discord msg ids)
 # TODO: notify delegator 
 # TODO: test NC server-side updates 
+# TODO: fix followup reminder spam
 #!/usr/bin/env python3
 from datetime import datetime, timedelta, timezone
 import os

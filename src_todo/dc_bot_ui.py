@@ -110,244 +110,86 @@ class ChangeDeadlineButton(discord.ui.Button):
 
     async def callback(self, interaction: discord.Interaction):
         _, task_key, _ = self.custom_id.split(":")
-        picker = DeadlinePickerView(task_key)
-        await interaction.response.edit_message(view=picker)
+        await interaction.response.send_modal(DateModal(task_key))
 
 
-# view for updating deadline
-class DeadlinePickerView(discord.ui.View):
+class DateModal(discord.ui.Modal):
     def __init__(self, task_key: str):
-        super().__init__(timeout=300)
-        self.task_key = str(task_key)
-        self.selected_month = None
-        self.selected_day = None
-        self.text = load_state()[task_key]["text"]
-
-        self.add_item(MonthSelect(task_key))
-        self.add_item(DaySelect(task_key))
-        self.add_item(SubmitDeadlineButton(task_key))
-        self.add_item(CancelDeadlineButton(task_key))
-
-
-# stores new deadline month value
-class MonthSelect(discord.ui.Select):
-    def __init__(self, task_key: str):
+        super().__init__(
+            title="Extend Deadline",
+            custom_id=f"deadline:{task_key}:modal"
+        )
         self.task_key = task_key
-        options = [
-            discord.SelectOption(label=calendar.month_name[i], value=str(i))
-            for i in range(1, 13)
-        ]
-        super().__init__(
-            placeholder="Month",
-            min_values=1,
-            max_values=1,
-            options=options,
-            custom_id=f"deadline:{task_key}:month",
+        # string select wrapped in a label
+        self.month = discord.ui.Label(
+                text="Month",
+                component=discord.ui.Select(
+                        custom_id=f"deadline:{task_key}:month",
+                        placeholder="Month",
+                        options = [
+                                discord.SelectOption(label=calendar.month_name[i], value=str(i))
+                                for i in range(1, 13)
+                        ]
+                )
         )
+        self.add_item(self.month)
 
-    async def callback(self, interaction: discord.Interaction):
-        self.view.selected_month = int(self.values[0])
-        
-        await interaction.edit_original_response(
-                content=self.view.text,
-                view=self.view
+        self.date = discord.ui.Label(
+                text="Date",
+                component=discord.ui.TextInput(
+                        custom_id=f"deadline:{task_key}:date",
+                        style=discord.TextStyle.paragraph,
+                        placeholder="DD",
+                        required=True
+                )
         )
+        self.add_item(self.date)
 
-
-# stores new deadline day value
-class DaySelect(discord.ui.Select):
-    def __init__(self, task_key: str):
-        options = [
-            discord.SelectOption(label=str(i), value=str(i))
-            for i in range(1, 32)
-        ]
-        super().__init__(
-            placeholder="Day",
-            min_values=1,
-            max_values=1,
-            options=options,
-            custom_id=f"deadline:{task_key}:day",
-        )
-
-    async def callback(self, interaction: discord.Interaction):
-        self.view.selected_day = int(self.values[0])
-        await interaction.response.edit_message(
-                content=self.view.text,
-                view=self.view
-        )
-
-
-class SubmitDeadlineButton(discord.ui.Button):
-    def __init__(self, task_key: str):
-        super().__init__(
-            label="Submit",
-            style=discord.ButtonStyle.success,
-            custom_id=f"deadline:{task_key}:submit",
-        )
-
-    async def callback(self, interaction: discord.Interaction):
-        view = self.view
-        if view.selected_month is None or view.selected_day is None:
-            await interaction.response.send_message(
-                "Choose both a month and a day first.",
-                ephemeral=True,
-            )
-            return
-
+    async def on_submit(self, interaction: discord.Interaction):
         await interaction.response.defer(ephemeral=True)
+        month = self.month.component.values[0]
+        raw_day = self.date.component.value
+
+        try:
+                day = int(raw_day)
+        except ValueError:
+                await interaction.response.send_message(
+                        "Date must be an integer from 1-31.",
+                        ephemeral=True
+                )
+                return
 
         today = date.today()
-        year = today.year
 
+        # check if valid date entered
+        candidate = None
+        for y in range(2): # current and next year
+                try:
+                        d = date(int(today.year) + y, int(month), day)
+                        if d >= today:
+                                candidate = d
+                                break
+                except ValueError:
+                        continue
+
+        if candidate is None:
+                await interaction.response.send_message(
+                        "Invalid date.",
+                        ephemeral=True
+                )
+                return
+
+        # convert to closest date in ISO format
+        new_deadline_iso = candidate.isoformat()
         try:
-            new_deadline = date(year, view.selected_month, view.selected_day)
-        except ValueError:
-            await interaction.followup.send("That date is invalid.", ephemeral=True)
-            return
-
-        if new_deadline < today:
-            await interaction.followup.send("Deadline must be today or later.", ephemeral=True)
-            return
-
-        task_key = view.task_key
-
-        try:
-            _, message = await update_and_retry(task_key, new_deadline.isoformat())
+                await update_and_retry(self.task_key, None, new_deadline_iso)
         except Exception as e:
-            await interaction.followup.send(
-                f"Nextcloud deadline update failed after retries: {e}",
-                ephemeral=True,
-            )
-            return
+                await interaction.followup.send(f"Deadline update failed: {e}", ephemeral=True)
+                return
 
-        await asyncio.to_thread(notify_delegator, "deadline_changed", task_key)
-
-        state = load_state()
-        task = state.get(task_key, {})
-        status = task.get("status", "pending")
-
-        await interaction.edit_original_response(
-            content=task.get("text", ""),
-            view=TaskStatusView(task_key, status=status),
-        )
-        if message:
-                await interaction.followup.send(message, ephemeral=True)
-
-
-class SubmitDeadlineButton(discord.ui.Button):
-    def __init__(self, task_key: str):
-        super().__init__(
-            label="Submit",
-            style=discord.ButtonStyle.success,
-            custom_id=f"deadline:{task_key}:submit",
-        )
-
-    async def callback(self, interaction: discord.Interaction):
-        view = self.view
-        if view.selected_month is None or view.selected_day is None:
-            await interaction.response.send_message(
-                "Choose both a month and a day first.",
-                ephemeral=True,
-            )
-            return
-
-        await interaction.response.defer(ephemeral=True)
-
-        today = date.today()
-        year = today.year
-
-        try:
-            new_deadline = date(year, view.selected_month, view.selected_day)
-        except ValueError:
-            await interaction.followup.send("That date is invalid.", ephemeral=True)
-            return
-
-        if new_deadline < today:
-            await interaction.followup.send("Deadline must be today or later.", ephemeral=True)
-            return
-
-        task_key = view.task_key
-
-        try:
-            _, message = await update_and_retry(task_key, new_deadline.isoformat())
-        except Exception as e:
-            await interaction.followup.send(
-                f"Nextcloud deadline update failed after retries: {e}",
-                ephemeral=True,
-            )
-            return
-
-        await asyncio.to_thread(notify_delegator, "deadline_changed", task_key)
-
-        state = load_state()
-        task = state.get(task_key, {})
-        status = task.get("status", "pending")
-
-        await interaction.edit_original_response(
-            content=task.get("text", ""),
-            view=TaskStatusView(task_key, status=status),
-        )
-        await interaction.followup.send(message, ephemeral=True)
-
-
-class CancelDeadlineButton(discord.ui.Button):
-    def __init__(self, task_key: str):
-        super().__init__(
-            label="Back",
-            style=discord.ButtonStyle.secondary,
-            custom_id=f"deadline:{task_key}:cancel",
-        )
-
-    async def callback(self, interaction: discord.Interaction):
-        state = load_state()
-        task = state.get(self.view.task_key, {})
-        status = task.get("status", "pending")
-        await interaction.response.edit_message(
-            content=task.get("text", ""),
-            view=TaskStatusView(self.view.task_key, status=status),
-        )
-
-
-async def apply_deadline(interaction: discord.Interaction, view: DeadlinePickerView):
-    if view.selected_month is None or view.selected_day is None:
-        await interaction.response.edit_message(view=view)
-        return
-
-    today = date.today()
-    year = today.year
-
-    # check if valid
-    try:
-        new_deadline = date(year, view.selected_month, view.selected_day)
-    except ValueError:
-        await interaction.response.send_message("That date is invalid.", ephemeral=True)
-        return
-
-    if new_deadline < today:
-        await interaction.response.send_message("Deadline must be today or later.", ephemeral=True)
-        return
-
-    task_key = view.task_key
-
-    try:
-        _, message = await update_and_retry(task_key, load_state()[task_key]["status"], new_deadline.isoformat())
-        await asyncio.to_thread(notify_delegator, "deadline_changed", task_key)
-    except Exception as e:
         await interaction.response.send_message(
-            f"Nextcloud deadline update failed after retries: {e}",
-            ephemeral=True,
+            content=f"Deadline successfully updated.",
+            ephemeral=True
         )
-        return
 
-    await asyncio.to_thread(notify_delegator, "deadline_changed", task_key)
-
-    state = load_state()
-    task = state.get(task_key, {})
-    status = task.get("status", "pending")
-
-    await interaction.response.edit_message(
-        content=task.get("text", ""),
-        view=TaskStatusView(task_key, status=status),
-    )
-    await interaction.followup.send(message, ephemeral=True)
 

@@ -21,7 +21,8 @@ RETRYABLE_ERRORS = (
     requests.exceptions.Timeout,
 )
 
-async def update_and_retry(task_key: str, new_status: str, deadline: str = "", retries: int = 3):
+# in case of temporary server-side connection errors
+async def update_and_retry(task_key: str, new_status: str, deadline: str = "", retries: int = 5):
     last_exc = None
     for attempt in range(retries):
         try:
@@ -34,22 +35,22 @@ async def update_and_retry(task_key: str, new_status: str, deadline: str = "", r
     raise last_exc
 
 
-def update_nextcloud_task(task_key: str, action: str, deadline: str = ""):
+def update_nextcloud_task(task_key: str, action: str = "", deadline: str = ""):
     state = load_state()
     task = state.get(task_key)
     if not task:
-        return False, f""
+        return False, "Task not found."
 
     completed_timestamp(task_key, action)
 
     event_uid = task.get("event_uid")
     if not event_uid:
-        return False, ""
+        return False, "Event ID not found."
 
     with get_client() as client:
         calendar = client.calendar(url=CALENDAR_URL)
         if calendar is None:
-            return False, ""
+            return False, "Calendar not found."
 
         # get event object (encapsulating vTODO) by UID first?
         try:
@@ -83,29 +84,30 @@ def update_nextcloud_task(task_key: str, action: str, deadline: str = ""):
                      task["sent_reminder_deltas"] = []
                      task["last_deadline_reminder_sent_at"] = None
 
-                print(task["status"] )
-                print(action)
-                print(vobj.vtodo.status.value)
-                if task["status"] != action:
-                        # handle interaction
-                        if action == "done":
-                                todo.complete()
-                                vobj.vtodo.status.value = 'COMPLETED'
-                        # handle cancellations 
-                        else:
-                                if task["status"] == "done": # undo complete
-                                        todo.uncomplete()
+                if action:
+                        print(task["status"] )
+                        print(action)
+                        print(vobj.vtodo.status.value)
+                        if task["status"] != action:
+                                # handle interaction
+                                if action == "done":
+                                        todo.complete()
+                                        vobj.vtodo.status.value = 'COMPLETED'
+                                # handle cancellations 
+                                else:
+                                        if task["status"] == "done": # undo complete
+                                                todo.uncomplete()
 
-                                if action == "pending":
-                                        vobj.vtodo.status.value = 'NEEDS-ACTION'
-                                elif action == "working":
-                                        vobj.vtodo.status.value = 'IN-PROCESS'
-                                else: # cancelled
-                                        vobj.vtodo.status.value = 'CANCELLED'
+                                        if action == "pending":
+                                                vobj.vtodo.status.value = 'NEEDS-ACTION'
+                                        elif action == "working":
+                                                vobj.vtodo.status.value = 'IN-PROCESS'
+                                        else: # cancelled
+                                                vobj.vtodo.status.value = 'CANCELLED'
                                 
         todo.save()
 
-        task["status"] = action
+        if action: task["status"] = action
         task["workflow_updated_at"] = utc_now_iso()
         task["nextcloud_update"] = {
                 "pending": True,
