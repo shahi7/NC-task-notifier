@@ -104,7 +104,8 @@ def update_nextcloud_task(task_key: str, action: str = "", deadline: str = ""):
                                                 vobj.vtodo.status.value = 'IN-PROCESS'
                                         else: # cancelled
                                                 vobj.vtodo.status.value = 'CANCELLED'
-                                
+
+        print("\ndone updating NC\n")  
         todo.save()
 
         if action: task["status"] = action

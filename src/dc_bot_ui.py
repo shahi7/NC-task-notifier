@@ -137,8 +137,10 @@ class DateModal(discord.ui.Modal):
         self.date = discord.ui.Label(
                 text="Date",
                 component=discord.ui.TextInput(
+                        max_length=2,
+                        min_length=2,
                         custom_id=f"deadline:{task_key}:date",
-                        style=discord.TextStyle.paragraph,
+                        style=discord.TextStyle.short,
                         placeholder="DD",
                         required=True
                 )
