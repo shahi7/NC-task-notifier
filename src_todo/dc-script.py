@@ -2,9 +2,9 @@
 Polls NextCloud calendar via CalDAV sync token for newly created/modified VTODOs
 and queues Discord DMs for TaskBot
 """
-# TODO: schedule in background (cron); cron should retry upon ConnectionError 
-# TODO: notify delegator
 # TODO: vTODO items; use tags to pick assignees (use CN)
+# TODO: notify assignees upon task update + notify newly added assignees (store multiple discord msg ids)
+# TODO: notify delegator 
 # TODO: test NC server-side updates 
 #!/usr/bin/env python3
 from datetime import datetime, timedelta, timezone
@@ -128,10 +128,10 @@ def enqueue_discord_dm(text: str, discord_user_id: int, task_key: str, job_type:
 # TODO: change to TODO
 def parse_vtodo(vtodo):
     print("vtodo:\n", vtodo)
-    subject = getattr(vtodo.summary, "value", "").strip() if getattr(vtodo, "summary", None) else "Nextcloud event"
-    location = getattr(vtodo.location, "value", "") if getattr(vtodo, "location", None) else ""
-    description = getattr(vtodo.description, "value", "").strip() if getattr(vtodo, "description", None) else ""
-    due = getattr(vtodo.due, "value", None) if getattr(vtodo, "due", None) else None
+    subject = str(vtodo.get("SUMMARY", "")).strip() or "Nextcloud event"
+    description = str(vtodo.get("DESCRIPTION", "")).strip() if vtodo.get("DESCRIPTION") else ""
+    due = vtodo.get("DUE")
+    location = str(vtodo.get("LOCATION", "")).strip()
 
     deadline_text = due.date().isoformat() if isinstance(due, datetime) else str(due or "")
 
@@ -154,16 +154,21 @@ def store_event(task_key: str, calendar_name: str, event, vtodo, text: str):
     if task_key not in state:
         state[task_key] = {}
 
+    try:
+        due = vtodo.decoded("DUE") if vtodo.get("DUE") else None
+    except Exception:
+        due = vtodo.get("DUE")
+
     state[task_key]["calendar_name"] = (calendar_name or "").strip().lower()
     state[task_key]["status"] = state[task_key].get("status", "pending")
     state[task_key]["object_type"] = "caldav_event"
-    state[task_key]["object_id"] = str(getattr(vtodo.uid, "value", "") if getattr(vtodo, "uid", None) else "")
-    state[task_key]["event_uid"] = str(getattr(vtodo.uid, "value", "") if getattr(vtodo, "uid", None) else "")
+    state[task_key]["object_id"] = str(vtodo.get("UID", "")).strip()
+    state[task_key]["event_uid"] = str(vtodo.get("UID", "")).strip()
     state[task_key]["event_url"] = str(getattr(event, "url", ""))
-    state[task_key]["deadline"] = str(getattr(vtodo.due, "value", "") if getattr(vtodo, "due", None) else "") # .due
-    state[task_key]["location"] = str(getattr(vtodo.location, "value", "") if getattr(vtodo, "location", None) else "")
-    state[task_key]["subject"] = getattr(vtodo.summary, "value", "").strip() if getattr(vtodo, "summary", None) else ""
-    state[task_key]["description"] = getattr(vtodo.description, "value", "").strip() if getattr(vtodo, "description", None) else ""
+    state[task_key]["deadline"] = due.isoformat() if hasattr(due, "isoformat") else str(due or "")
+    state[task_key]["location"] = str(vtodo.get("LOCATION", "")).strip() if vtodo.get("LOCATION") else ""
+    state[task_key]["subject"] = str(vtodo.get("SUMMARY", "")).strip()
+    state[task_key]["description"] = str(vtodo.get("DESCRIPTION", "")).strip() if vtodo.get("DESCRIPTION") else ""
     state[task_key]["notification_id"] = task_key
     state[task_key]["text"] = text
     state[task_key]["notification_datetime"] = datetime.now(timezone.utc).isoformat()
@@ -171,11 +176,11 @@ def store_event(task_key: str, calendar_name: str, event, vtodo, text: str):
 
     # storing delegator and assignee discord/signal ids
     ids = []
-    assignees = getattr(vtodo, "attendee", None)
+    assignees = list(vtodo.get("CATEGORIES", []))
     if not isinstance(assignees, list): assignees = [assignees]
     for a in assignees:
-        email = str(getattr(a, "value", "")).replace("mailto:", "")
-        ids.append(USER_MAP_DC.get(email))
+        name = str(getattr(a, "value", ""))
+        ids.append(USER_MAP_DC.get(name))
     state[task_key]["assignees"] = ids
 
     organizer = getattr(vtodo, "organizer", None)
@@ -187,61 +192,6 @@ def store_event(task_key: str, calendar_name: str, event, vtodo, text: str):
     print("12x: object_type =", state[task_key]["object_type"])
     print("12y: object_id =", state[task_key]["object_id"])
     print("12z: calendar_name =", state[task_key]["calendar_name"])
-
-
-# searches through calendars
-def sync_calendar_search():
-    print("8: entering process_calendar_changes")
-    old_token = load_sync_token()
-    print("8a: old_token =", old_token)
-
-    changed_items = []
-
-    with get_client() as client:
-        principal = client.principal()
-        calendars = list(principal.calendars())
-        print("8b: calendars found =", len(calendars))
-
-        for calendar in calendars:
-            calendar_name = (calendar.get_display_name() or "").strip().lower()
-            print("8c: checking calendar =", calendar_name)
-
-            if not old_token:
-                print("8d: no old token yet, saving initial token and skipping initial send")
-                changes = calendar.get_objects(load_objects=True)
-                save_sync_token(getattr(changes, "sync_token", None))
-                continue
-
-            # get new event objects since last sync
-            try:
-                changes = calendar.get_objects(sync_token=old_token, load_objects=True, disable_fallback=True)
-            except Exception as e:
-                print("8x: get_objects failed for", calendar_name, repr(e))
-                continue
-
-            print("changes:\n", changes)
-
-            # record new TODOs
-            for event in changes:
-                try:
-                    vtodo = event.vobject_instance.vtodo
-                    # vtodo = event.get_vobject_instance() # read-only
-                except Exception as e:
-                    print("8y: skipping non-vtodo or bad vobject", repr(e))
-                    continue
-
-                print("event candidate:\n", event)
-
-                uid = getattr(vtodo.uid, "value", "") if getattr(vtodo, "uid", None) else ""
-                if not uid:
-                    print("8z: skipping because missing uid")
-                    continue
-
-                changed_items.append((calendar_name, event, vtodo))
-
-            save_sync_token(getattr(changes, "sync_token", None))
-
-    return changed_items
 
 
 def sync_calendar():
@@ -283,14 +233,19 @@ def sync_calendar():
             for event in changes:
                 try:
                     # vtodo = event.vobject_instance.vtodo
-                    vtodo = event.get_vobject_instance() # read-only
+                    vtodo = event.get_icalendar_component() # read-only
+                    print(event.get_icalendar_component())
+                    print("done print")
                 except Exception as e:
                     print("8y: skipping non-vtodo or bad vobject", repr(e))
                     continue
 
                 print("event candidate:\n", event)
 
-                uid = getattr(vtodo.uid, "value", "") if getattr(vtodo, "uid", None) else ""
+                # uid = getattr(vtodo.uid, "value", "") if getattr(vtodo, "UID", None) else ""
+                uid = str(vtodo.get("UID", ""))
+                print("UID: ", uid)
+
                 if not uid:
                     print("8z: skipping because missing uid")
                     continue
@@ -311,7 +266,7 @@ def main():
 
     # first refresh/update local state from any synced calendar changes
     for calendar_name, event, vtodo in changed_items:
-        event_uid = getattr(vtodo.uid, "value", "") if getattr(vtodo, "uid", None) else ""
+        event_uid = str(vtodo.get("UID", "")).strip()
         print("11: raw event_uid =", event_uid)
 
         if not event_uid:
