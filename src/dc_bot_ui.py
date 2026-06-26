@@ -1,7 +1,6 @@
 """
 Defines UI elements for Discord notifications, and updates UI on user click
 """
-# TODO: progress bar, stale buttons, clear cache (queue + buttons), reflect updates from NC end (automatic?)
 import asyncio
 import calendar
 from datetime import date
@@ -90,7 +89,7 @@ class TaskButton(discord.ui.Button):
                         content=old_view.text,
                         view=old_view
                 )
-                await interaction.followup.send(f"Nextcloud update failed after retries: {e}", ephemeral=True)
+                await interaction.followup.send(f"Nextcloud update failed; will be retried in 5 minutes: {e}", ephemeral=True)
                 return
         
         if message:
@@ -126,6 +125,7 @@ class DateModal(discord.ui.Modal):
                 component=discord.ui.Select(
                         custom_id=f"deadline:{task_key}:month",
                         placeholder="Month",
+                        required=True,
                         options = [
                                 discord.SelectOption(label=calendar.month_name[i], value=str(i))
                                 for i in range(1, 13)
@@ -139,10 +139,10 @@ class DateModal(discord.ui.Modal):
                 component=discord.ui.TextInput(
                         max_length=2,
                         min_length=2,
+                        required=True,
                         custom_id=f"deadline:{task_key}:date",
                         style=discord.TextStyle.short,
                         placeholder="DD",
-                        required=True
                 )
         )
         self.add_item(self.date)
@@ -155,7 +155,7 @@ class DateModal(discord.ui.Modal):
         try:
                 day = int(raw_day)
         except ValueError:
-                await interaction.response.send_message(
+                await interaction.response.followup.send(
                         "Date must be an integer from 1-31.",
                         ephemeral=True
                 )
@@ -175,7 +175,7 @@ class DateModal(discord.ui.Modal):
                         continue
 
         if candidate is None:
-                await interaction.response.send_message(
+                await interaction.followup.send(
                         "Invalid date.",
                         ephemeral=True
                 )
@@ -189,7 +189,7 @@ class DateModal(discord.ui.Modal):
                 await interaction.followup.send(f"Deadline update failed: {e}", ephemeral=True)
                 return
 
-        await interaction.response.send_message(
+        await interaction.followup.send(
             content=f"Deadline successfully updated.",
             ephemeral=True
         )

@@ -87,48 +87,6 @@ def format_text_and_state(subject: str, message: str, task_key: str, object_id, 
     return "\n".join(parts)
 
 
-# prefers event_uid as more stable key
-def merge_task_into_event_uid(old_task_key: str, event_uid: str):
-    state = load_state()
-    old_task_key = str(old_task_key)
-    event_uid = str(event_uid).strip()
-
-    if not event_uid:
-        print("16m: merge skipped, missing event_uid")
-        return old_task_key
-    
-    old_task = state.get(old_task_key, {})
-    existing_task = state.get(event_uid, {})
-
-    print("16n: merging old_task_key =", old_task_key, "into event_uid =", event_uid)
-    
-    # treating new key as canonical to overwrite stale data
-    merged = dict(existing_task)
-    merged.update(old_task)
-
-    # manually preserving important local data
-    merged["event_uid"] = event_uid
-    merged.setdefault("previous_message_ids", [])
-    merged.setdefault("discord_messages", {})
-    merged.setdefault("previous_message_ids", {})
-
-    old_msgs = old_task.get("discord_messages", {})
-    existing_msgs = existing_task.get("discord_messages", {})
-    merged["discord_messages"] = {**old_msgs, **existing_msgs}
-
-    # old message_id; only newest notification will render buttons
-    # if existing_task.get("discord_message_id") and existing_task.get("discord_message_id") != old_task.get("discord_message_id"):
-    #     merged["previous_message_ids"].append(existing_task["discord_message_id"])
-
-    state[event_uid] = merged
-
-    if old_task_key != event_uid:
-        state.pop(old_task_key, None)
-
-    save_state(state)
-    return event_uid
-
-
 def utc_now_iso():
     return datetime.now(timezone.utc).isoformat()
 
@@ -284,6 +242,8 @@ def completed_timestamp(task_key, action):
             task["completed_timestamp"] = utc_now_iso()
       else:
             task["completed_timestamp"] = ""
+      state[task_key] = task
+      save_state(state)
       return task["completed_timestamp"]
 
 
@@ -292,6 +252,6 @@ def completed(task_key, delta):
     task = state.get(task_key)
     cutoff = datetime.now(timezone.utc) - timedelta(days=delta)
 
-    if task.get("completed_timestamp", "") and task["completed_timestamp"] < cutoff:
+    if task.get("completed_timestamp", "") and datetime(task["completed_timestamp"]) < cutoff:
         return True
     return False

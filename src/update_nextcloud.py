@@ -5,7 +5,10 @@ Updates task state to NextCloud server
 # TODO use object_id, need calendar_name for CALDAV url, need event UID/URL, find color property
 import asyncio
 from datetime import datetime
+import json
 import os
+from pathlib import Path
+import uuid
 import requests # type: ignore
 from helpers import completed_timestamp, get_client, load_state, utc_now_iso, save_state
 from caldav.calendarobjectresource import Todo # type: ignore
@@ -21,18 +24,55 @@ RETRYABLE_ERRORS = (
     requests.exceptions.Timeout,
 )
 
+NC_QUEUE_DIR = Path("NCqueue")
+NC_QUEUE_DIR.mkdir(parents=True, exist_ok=True)
+# NC_UPDATE_QUEUE = Path("NCupdate_queue.json")
+
+# TODO: add to queue to retry on rerun if failed. "Will try again in 5 minutes"
 # in case of temporary server-side connection errors
 async def update_and_retry(task_key: str, new_status: str, deadline: str = "", retries: int = 5):
     last_exc = None
-    for attempt in range(retries):
-        try:
-            return await asyncio.to_thread(update_nextcloud_task, task_key, new_status, deadline)
-        except RETRYABLE_ERRORS as e:
-            last_exc = e
-            if attempt == retries - 1:
-                break
-            await asyncio.sleep(2 ** attempt)   # 1s, 2s, 4s
+    for attempt in range(retries): 
+        try: 
+            return await asyncio.to_thread(update_nextcloud_task, task_key, new_status, deadline) 
+        except RETRYABLE_ERRORS as e: 
+            last_exc = e 
+            if attempt == retries - 1: 
+                break 
+            await asyncio.sleep(2 ** attempt)   # 1s, 2s, 4s 
+    
+    # queue after retries fail; does not queue more than once
+    print("queueing to retry on rerun")
+    if not job.get("allow_requeue", ""):
+        tmp_path = NC_QUEUE_DIR/f"{uuid.uuid4()}.tmp"
+        final_path = NC_QUEUE_DIR/f"{uuid.uuid4()}.json"
+        allow_requeue = False
+        job = {
+                task_key: task_key, 
+                new_status: new_status, 
+                deadline: deadline, 
+                allow_requeue: allow_requeue
+        }
+        tmp_path.write_text(json.dumps(job, indent=2))
+        tmp_path.rename(final_path)
+
     raise last_exc
+
+
+async def process_update_queue():
+    # just try queued jobs first? instead of FIFO
+    for path in sorted(NC_QUEUE_DIR.glob("*.json")):
+        try:
+            processing_path = NC_QUEUE_DIR/path.name
+            try:
+                path.rename(processing_path)
+            except FileNotFoundError:
+                continue
+            job = json.loads(processing_path.read_text())
+            await update_and_retry(job["task_key"], job["new_status"], job["deadline"])
+            path.unlink()
+        except Exception as e:
+            print(f"Queued NC update still failing for {path.name}: {e}")
 
 
 def update_nextcloud_task(task_key: str, action: str = "", deadline: str = ""):
@@ -62,10 +102,6 @@ def update_nextcloud_task(task_key: str, action: str = "", deadline: str = ""):
             print(task["event_uid"])
             task["event_uid"] = todo.id
             print(task["event_uid"])
-            # TODO: use .data/get_data() and icalendar to parse raw ics string for UID
-            # todo = calendar.get_todo_by_uid(event_uid)
-            # print(todo)
-            # todo = calendar.search(todo=True, uid=event_uid)
         except Exception as e:
             print("Failed to fetch item as VTODO", repr(e))
             return False, ""

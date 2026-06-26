@@ -3,7 +3,7 @@ Persistent Discord bot for polling notification queue (updated by dc_script), se
 and dynamically updating UI 
 """
 # TODO: run in background; systemd 
-#!/usr/bin/env python3
+#!/usr/bin/env python3 
 import os
 import discord # type: ignore
 from dotenv import load_dotenv # type: ignore
@@ -40,17 +40,18 @@ class TaskBot(discord.Client):
             self.bg_task = asyncio.create_task(self.process_queue())
 
 
-    # render function; can also be used in on_resume() or on_ready()
+    # render function; can also be used in on_resume() or on_ready() 
     async def render_persistent_views(self):
         print("setup_hook start")
         state = load_state()
 
         for task_key, task in state.items():
-            message_id = task.get("discord_message_id")
-            if message_id and message_id not in self.views_registered_for_message_ids:
-                self.add_view(TaskStatusView(task_key, status=task.get("status")), message_id=message_id)
-                print("added view for", task_key, message_id)
-                self.views_registered_for_message_ids.add(message_id)
+            message_ids = [task.get("discord_messages", {}).get(user, {}).get("message_id") for user in task.get("assignees", [])]
+            for message_id in message_ids:
+                if message_id and message_id not in self.views_registered_for_message_ids:
+                        self.add_view(TaskStatusView(task_key, status=task.get("status")), message_id=message_id)
+                        print("added view for", task_key, message_id)
+                        self.views_registered_for_message_ids.add(message_id)
 
 
     # poll queue
@@ -72,6 +73,10 @@ class TaskBot(discord.Client):
                         print("dropping invalid job with missing discord_user_id:", job, flush=True)
                         processing_path.rename(DONE_DIR / processing_path.name)
                         continue
+                    
+                    if job.get("sleep_duration", ""):
+                        n = int(job["sleep_duration"]) 
+                        await asyncio.sleep(n)
 
                     # sending DM
                     if job["type"] == "send_task_dm":
@@ -91,7 +96,14 @@ class TaskBot(discord.Client):
                     processing_path.rename(DONE_DIR / processing_path.name)
 
                 except Exception as e:
+                    # exponential increase to sleep time between retries 
+                    if not job.get("sleep_duration", ""): 
+                         job["sleep_duration"] = 1
+                    else:
+                         job["sleep_duration"] = job["sleep_duration"]**2
+
                     print("queue job failed:", repr(e))
+                    processing_path.write_text(json.dumps(job, indent=2))
                     processing_path.rename(FAILED_DIR / processing_path.name)
 
             await asyncio.sleep(2)
@@ -102,20 +114,14 @@ class TaskBot(discord.Client):
         if discord_user_id is None:
                 print("send_task_dm: missing discord_user_id for", task_key, flush=True)
                 return None
-    
-        user = await self.fetch_user(discord_user_id)
-        view = TaskStatusView(task_key)
-        msg = await user.send(view=view)
-
+        
         state = load_state()
         if task_key not in state:
                 state[task_key] = {}
-
-        # using only newest msg to render buttons
-        # previous_message_id = state[task_key].get("discord_message_id")
-        # state[task_key].setdefault("previous_message_ids", [])
-        # if previous_message_id and previous_message_id != msg.id:
-        #    state[task_key]["previous_message_ids"].append(previous_message_id)
+    
+        user = await self.fetch_user(discord_user_id)
+        view = TaskStatusView(task_key)
+        msg = await user.send(text, view=view)
 
         task = state.get(task_key, {})
         task.setdefault("discord_messages", {})
@@ -124,6 +130,7 @@ class TaskBot(discord.Client):
                 "sent_at": utc_now_iso(),
         }
         task["text"] = text
+        state[task_key] = task
         save_state(state)
 
         self.add_view(TaskStatusView(task_key, status=state[task_key].get("status")), message_id=msg.id)
@@ -131,33 +138,31 @@ class TaskBot(discord.Client):
 
         return msg.id
     
-    
+    # is this called BEFORE updates are loaded into state
     async def send_task_followup_dm(self, discord_user_id: int, text: str, task_key: str):
         if discord_user_id is None:
                 return None
 
         state = load_state()
         task = state.get(task_key, {})
-        original_message_id = task.get("discord_message_id")
+        discord_user_id = str(discord_user_id)
+        original_message_id = task.get("discord_messages", {}).get(discord_user_id, {}).get("message_id", "")
+        
         if not original_message_id:
-                return await self.send_task_dm(discord_user_id, text, task_key)
+                print("original message not found")
+                user = self.get_user(discord_user_id) or await self.fetch_user(discord_user_id)
+                channel = user.dm_channel or await user.create_dm()
+                await channel.send(text)
+                return None
 
         user = self.get_user(discord_user_id) or await self.fetch_user(discord_user_id)
         channel = user.dm_channel or await user.create_dm()
 
-        subject = task.get("subject", "Task")
-        deadline = task.get("deadline", "")
-        status = task.get("status", "pending")
-
-        reminder = f"Reminder: {subject}\nStatus: {status}"
-        if deadline:
-                reminder += f"\nDeadline: {deadline}"
-
         try:
                 original_msg = await channel.fetch_message(original_message_id)
-                await channel.send(reminder, reference=original_msg)
+                await channel.send(text, reference=original_msg)
         except discord.NotFound:
-                await channel.send(reminder)
+                await channel.send(text)
         return None
 
 
