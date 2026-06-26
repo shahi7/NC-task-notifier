@@ -138,25 +138,44 @@ class TaskBot(discord.Client):
 
         return msg.id
     
-    # is this called BEFORE updates are loaded into state
-    async def send_task_followup_dm(self, discord_user_id: int, text: str, task_key: str):
+    
+    async def send_task_followup_dm(self, discord_user_id: int, text: str, task_key: str, update: bool):
         if discord_user_id is None:
                 return None
 
         state = load_state()
         task = state.get(task_key, {})
+        # if task info was updated, edit original message
+        new_text = ""
+        if update:
+            subject = str(task.get("subject", "")).strip() or "Nextcloud Task"
+            description = str(task.get("description", "")).strip() if task.get("description") else ""
+            location = str(task.get("location", "")).strip()
+            deadline_text = text.get("deadline", "").split("T")[0]
+            parts = [subject]
+            if description:
+                parts.append(f"Description: {description}")
+            if location:
+                parts.append(f"Location: {location}")
+            if deadline_text:
+                parts.append(f"Deadline: {deadline_text}")
+            new_text = "\n".join(parts), subject, description, deadline_text
+            task["text"] = new_text
+
         discord_user_id = str(discord_user_id)
         original_message_id = task.get("discord_messages", {}).get(discord_user_id, {}).get("message_id", "")
         
-        if not original_message_id:
-                print("original message not found")
-                user = self.get_user(discord_user_id) or await self.fetch_user(discord_user_id)
-                channel = user.dm_channel or await user.create_dm()
-                await channel.send(text)
-                return None
-
         user = self.get_user(discord_user_id) or await self.fetch_user(discord_user_id)
         channel = user.dm_channel or await user.create_dm()
+
+        if not original_message_id:
+                print("original message not found")
+                await channel.send(text)
+                return None
+        # update msg if update
+        elif new_text:
+                original_msg = await channel.fetch_message(original_message_id)
+                await original_msg.edit(content=new_text)
 
         try:
                 original_msg = await channel.fetch_message(original_message_id)
