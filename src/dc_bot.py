@@ -46,7 +46,7 @@ class TaskBot(discord.Client):
         state = load_state()
 
         for task_key, task in state.items():
-            message_ids = [task.get("discord_messages", {}).get(user, {}).get("message_id") for user in task.get("assignees", [])]
+            message_ids = [task.get("discord_messages", {}).get(str(user), {}).get("message_id") for user in task.get("assignees", [])]
             for message_id in message_ids:
                 if message_id and message_id not in self.views_registered_for_message_ids:
                         self.add_view(TaskStatusView(task_key, status=task.get("status")), message_id=message_id)
@@ -163,8 +163,8 @@ class TaskBot(discord.Client):
             new_text = "\n".join(parts)
             task["text"] = new_text
 
-        discord_user_id = str(discord_user_id)
-        original_message_id = task.get("discord_messages", {}).get(discord_user_id, {}).get("message_id", "")
+        discord_user_id = discord_user_id
+        original_message_id = task.get("discord_messages", {}).get(str(discord_user_id), {}).get("message_id", "")
         
         user = self.get_user(discord_user_id) or await self.fetch_user(discord_user_id)
         channel = user.dm_channel or await user.create_dm()

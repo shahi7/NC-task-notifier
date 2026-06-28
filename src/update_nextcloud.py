@@ -2,7 +2,6 @@
 Updates task state to NextCloud server
 """
 
-# TODO use object_id, need calendar_name for CALDAV url, need event UID/URL, find color property
 import asyncio
 from datetime import datetime
 import json
@@ -123,8 +122,8 @@ def update_nextcloud_task(task_key: str, action: str = "", deadline: str = ""):
                      else:
                          vt.add("due").value = new_due
                      # fresh reminder deltas for new deadline
-                     task["sent_reminder_deltas"] = []
-                     task["last_deadline_reminder_sent_at"] = None
+                     state[task_key]["sent_reminder_deltas"] = []
+                     state[task_key]["last_deadline_reminder_sent_at"] = None
 
                 if action:
                         print("\naction update\n") 
@@ -157,15 +156,15 @@ def update_nextcloud_task(task_key: str, action: str = "", deadline: str = ""):
         todo.save()
 
         if action: task["status"] = action
-        task["workflow_updated_at"] = utc_now_iso()
-        task["nextcloud_update"] = {
+        state[task_key]["workflow_updated_at"] = utc_now_iso()
+        state[task_key]["nextcloud_update"] = {
                 "pending": True,
                 "action": action,
                 "object_type": task.get("object_type"),
                 "object_id": task.get("object_id"),
                 "notification_id": task.get("notification_id"),
         }
-        if deadline: task["deadline"] = deadline
+        if deadline: state[task_key]["deadline"] = deadline
         save_state(state)
 
     return True, f"Marked as **{action}**."

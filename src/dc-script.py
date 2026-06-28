@@ -2,7 +2,7 @@
 Polls NextCloud calendar via CalDAV sync token for newly created/modified VTODOs
 and queues Discord DMs for TaskBot 
 """
-# TODO: update deadline multiple times
+# TODO: test reminder deltas
 # TODO: stale buttons after restart (setup_hook)
 # test: fix followup reminder spam; reminders being sent whenever a task is sent or script is run
 # test: notify assignees upon task update + notify newly added assignees 
@@ -93,6 +93,14 @@ def get_reminder_deltas():
     return [timedelta(days=REMINDER_DAYS_BEFORE, hours=REMINDER_HOURS_BEFORE)]
 
 
+def normalize_deadline(value):
+    if value is None:
+        return ""
+    if isinstance(value, datetime):
+        return value.isoformat()
+    return str(value).strip()
+
+
 # checks if it is time to send a reminder (check deltas or if task is new)
 def should_send_reminder(task: dict, now: datetime, reminder_deltas: list[timedelta]):
     status = task.get("status", "pending")
@@ -173,17 +181,24 @@ def store_event(task_key: str, calendar_name: str, event, vtodo, text: str):
         # checking (below) if any assignees have been added or removed
         old_assignees = state[task_key].get("assignees", "")
 
-        # check if any info is being modified to notify assignees
+        # check if any info is being modified to notify assignees; values updated below
         state[task_key]["updated"] = {}
-        for field in ["DEADLINE", "LOCATION", "STATUS", "SUBJECT", "DESCRIPTION"]:
-                if field == "DEADLINE": actual = "DUE"
-                elif field == "SUBJECT": actual = "SUMMARY"
+        stored = normalize_deadline(state[task_key].get("deadline"))
+        current = normalize_deadline(vtodo.get("DUE"))
+        print("stored: ", stored)
+        print("current: ", current)
+        if stored and current != stored:
+            state[task_key]["updated"]["deadline"] = True
+        
+        for field in ["LOCATION", "STATUS", "SUBJECT", "DESCRIPTION"]:
+                if field == "SUBJECT": actual = "SUMMARY"
                 else: actual = field
                 field = field.lower()
 
                 if state[task_key].get(field, "") and vtodo.get(actual) != state[task_key][field]: 
+                    print(vtodo.get(actual))
+                    print(state[task_key][field])
                     state[task_key]["updated"][field] = True
-                    state[task_key]["subject" if field == "status" else field] = vtodo.get(field)
 
     due = vtodo.decoded("DUE").isoformat() if vtodo.get("DUE") else None
 
@@ -208,22 +223,24 @@ def store_event(task_key: str, calendar_name: str, event, vtodo, text: str):
 
     # storing delegator and assignee discord/signal ids
     assignees = [USER_MAP_DC.get(str(a).strip().lower(), "") for a in vtodo.get("CATEGORIES", [])]
-    assignees = [a for a in assignees if a is not None]
+    assignees = [a for a in assignees if a]
     if old_assignees and old_assignees != assignees:
         if assignees:
             added = list(set(assignees) - set(old_assignees))
             removed = list(set(old_assignees) - set(assignees))
             if added:
                 state[task_key]["added_assignees"] = added
+                for a in added:
+                    state[task_key]["assignees"].append(a)
             if removed:
                 state[task_key]["removed_assignees"] = removed
-        # looping to preserve existing message_ids
-        for a in removed:
-            state[task_key]["assignees"].remove(a)
-        for a in added:
-            state[task_key]["assignees"].append(a)
-    state[task_key]["assignees"] = assignees
-
+                # looping to preserve existing message_ids
+                for a in removed:
+                    state[task_key]["assignees"].remove(a)
+    # brand new task
+    elif not old_assignees: 
+        state[task_key]["assignees"] = list(assignees)
+        
     save_state(state)
 
     print("12x: object_type =", state[task_key]["object_type"])
@@ -379,7 +396,7 @@ def main():
                 if task["updated"].get(field, False):
                         if task[field] == "pending": continue
                         update_text += f"New {field}: {task[field].split("T")[0] if field == "deadline" else task[field]}.\n"
-                        task["updated"][field] = False
+                        new_state[task_key]["updated"][field] = False
             if update_text: text = "This task has been updated:\n" + update_text + "\n"
             else: continue # don't send unnecessary update msgs (always sends when status pending)
             print(text)
@@ -390,18 +407,18 @@ def main():
                 # notify of removal from task
                 if removed and discord_id in removed:
                     text = "You have been removed from the following task:\n" + text
-                    task["removed_assignees"].remove(discord_id)
+                    new_state[task_key]["removed_assignees"].remove(discord_id)
                 if added and discord_id in added:
                     text = "You have been added to the following task:\n" + text
-                    task["added_assignees"].remove(discord_id)
+                    new_state[task_key]["added_assignees"].remove(discord_id)
                      # new assignee should get canonical message with interactions
                     enqueue_discord_dm(text, discord_id, task_key, "send_task_dm", task.get("updated", {}))
                     continue
 
                 enqueue_discord_dm(text, discord_id, task_key, job_type, task.get("updated", {}))
-        task["added_assignees"] = []
-        task["removed_assignees"] = []
-        task["updated"] = {}
+        new_state[task_key]["added_assignees"] = []
+        new_state[task_key]["removed_assignees"] = []
+        new_state[task_key]["updated"] = {}
 
         print("13e: queued reminder for", task_key)
 

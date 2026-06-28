@@ -83,7 +83,7 @@ class TaskButton(discord.ui.Button):
 
         # state save (w/ new status) happens in update_nextcloud_task
         try:
-                _, message = await update_and_retry(task_key, new_status)
+                _, message = await update_and_retry(task_key, new_status=new_status)
         except Exception as e:
                 await interaction.edit_original_response(
                         content=old_view.text,
@@ -183,8 +183,25 @@ class DateModal(discord.ui.Modal):
 
         # convert to closest date in ISO format
         new_deadline_iso = candidate.isoformat()
+
         try:
                 await update_and_retry(self.task_key, new_status="", deadline=new_deadline_iso)
+                task = load_state().get(self.task_key, {})
+                new_text = build_task_text(task)
+                for discord_user_id, meta in task.get("discord_messages", {}).items():
+                        message_id = meta.get("message_id")
+                        if not message_id:
+                                continue
+
+                        user = interaction.client.get_user(int(discord_user_id)) or await interaction.client.fetch_user(int(discord_user_id))
+                        channel = user.dm_channel or await user.create_dm()
+
+                        try:
+                                msg = await channel.fetch_message(message_id)
+                                await msg.edit(content=new_text, view=TaskStatusView(self.task_key, status=task.get("status", "pending")))
+                        except discord.NotFound:
+                                pass
+    
         except Exception as e:
                 await interaction.followup.send(f"Deadline update failed: {e}", ephemeral=True)
                 return
@@ -195,3 +212,17 @@ class DateModal(discord.ui.Modal):
         )
 
 
+def build_task_text(task: dict) -> str:
+    subject = str(task.get("subject", "")).strip() or "Nextcloud Task"
+    description = str(task.get("description", "")).strip()
+    location = str(task.get("location", "")).strip()
+    deadline = str(task.get("deadline", "")).split("T")[0]
+
+    parts = [subject]
+    if description:
+        parts.append(f"Description: {description}")
+    if location:
+        parts.append(f"Location: {location}")
+    if deadline:
+        parts.append(f"Deadline: {deadline}")
+    return "\n".join(parts)
