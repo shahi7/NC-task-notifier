@@ -7,7 +7,7 @@ from datetime import date
 import discord # type: ignore 
 from helpers import load_state 
 from update_nextcloud import update_and_retry 
-from helpers import notify_delegator 
+from helpers import notify_delegator, normalize_status
 
 
 class TaskStatusView(discord.ui.View):
@@ -18,7 +18,9 @@ class TaskStatusView(discord.ui.View):
 
         state = load_state()
         task = state.get(self.task_key, {})
-        self.text = task.get("text", "")
+        self.text = build_task_text(task)
+
+        status = normalize_status(status)
 
         # rendering labels + buttons based on current status of task
         if status in ("pending", "cancelled"):
@@ -56,7 +58,7 @@ class TaskButton(discord.ui.Button):
             await interaction.followup.send("Task not found.", ephemeral=True)
             return
 
-        current = task.get("status", "pending")
+        current = normalize_status(task.get("status", "pending"))
 
         # updating status 
         if action == "working":
@@ -226,3 +228,5 @@ def build_task_text(task: dict) -> str:
     if deadline:
         parts.append(f"Deadline: {deadline}")
     return "\n".join(parts)
+
+

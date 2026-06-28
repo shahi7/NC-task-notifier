@@ -46,12 +46,13 @@ class TaskBot(discord.Client):
         state = load_state()
 
         for task_key, task in state.items():
-            message_ids = [task.get("discord_messages", {}).get(str(user), {}).get("message_id") for user in task.get("assignees", [])]
-            for message_id in message_ids:
-                if message_id and message_id not in self.views_registered_for_message_ids:
-                        self.add_view(TaskStatusView(task_key, status=task.get("status")), message_id=message_id)
-                        print("added view for", task_key, message_id)
-                        self.views_registered_for_message_ids.add(message_id)
+                discord_messages = task.get("discord_messages", {})
+                for _, meta in discord_messages.items():
+                        message_id = meta.get("message_id")
+                        if message_id and message_id not in self.views_registered_for_message_ids:
+                                self.add_view(TaskStatusView(task_key, status=task.get("status")), message_id=message_id)
+                                print("added view for", task_key, message_id)
+                                self.views_registered_for_message_ids.add(message_id)
 
 
     # poll queue

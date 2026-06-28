@@ -9,7 +9,7 @@ import os
 from pathlib import Path
 import uuid
 import requests # type: ignore
-from helpers import completed_timestamp, get_client, load_state, utc_now_iso, save_state
+from helpers import completed_timestamp, get_client, load_state, utc_now_iso, save_state, normalize_status
 from caldav.calendarobjectresource import Todo # type: ignore
 print(Todo)
 
@@ -111,42 +111,45 @@ def update_nextcloud_task(task_key: str, action: str = "", deadline: str = ""):
         # edit_icalendar_instance() alt
         with todo.edit_vobject_instance() as vobj:
                 print("\nedit vobj\n") 
-                vt = vobj.vtodo
                 # update deadline
                 if deadline:
                      print(deadline)
                      new_due = datetime.fromisoformat(deadline)
                      print(new_due)
-                     if hasattr(vt, "due"):
-                         vt.due.value = new_due
+                     if hasattr(vobj.vtodo, "due"):
+                         vobj.vtodo.due.value = new_due
                      else:
-                         vt.add("due").value = new_due
+                         vobj.vtodo.add("due").value = new_due
                      # fresh reminder deltas for new deadline
                      state[task_key]["sent_reminder_deltas"] = []
                      state[task_key]["last_deadline_reminder_sent_at"] = None
 
                 if action:
+                        n_status = normalize_status(action)
                         print("\naction update\n") 
-                        print(task["status"])
-                        print(action)
+                        print(n_status)
+                        print(normalize_status(task["status"]))
                         print("\naction\n") 
                         # print(vobj.vtodo.status.value)
-                        if not hasattr(vt, 'status'):
-                                vt.add("status").value = "NEEDS-ACTION"
-                        if task["status"] != action:
-                                vobj.add('status').value = "NEEDS-ACTION"
+                        if not hasattr(vobj.vtodo, 'status'):
+                                print("has attr")
+                                vobj.vtodo.add("status").value = "NEEDS-ACTION"
+                        if normalize_status(task["status"]) != n_status:
+                                print("doing")
+                                print(vobj.vtodo.status.value)
+                                vobj.vtodo.status.value = "NEEDS-ACTION"
                                 # handle interaction
-                                if action == "done":
+                                if n_status == "done":
                                         todo.complete()
                                         vobj.vtodo.status.value = 'COMPLETED'
                                 # handle cancellations 
                                 else:
-                                        if task["status"] == "done": # undo complete
+                                        if normalize_status(task["status"]) == "done": # undo complete
                                                 todo.uncomplete()
 
-                                        if action == "pending":
+                                        if n_status == "pending":
                                                 vobj.vtodo.status.value = 'NEEDS-ACTION'
-                                        elif action == "working":
+                                        elif n_status == "working":
                                                 print("\nmarekin\n") 
                                                 vobj.vtodo.status.value = 'IN-PROCESS'
                                         else: # cancelled
@@ -155,7 +158,7 @@ def update_nextcloud_task(task_key: str, action: str = "", deadline: str = ""):
         print("\ndone updating NC\n")  
         todo.save()
 
-        if action: task["status"] = action
+        if action: task["status"] = n_status
         state[task_key]["workflow_updated_at"] = utc_now_iso()
         state[task_key]["nextcloud_update"] = {
                 "pending": True,

@@ -255,3 +255,16 @@ def completed(task_key, delta):
     if task.get("completed_timestamp", "") and datetime(task["completed_timestamp"]) < cutoff:
         return True
     return False
+
+
+def normalize_status(status) -> str:
+    s = str(status or "").strip().upper()
+    if s in ("NEEDS-ACTION", "PENDING", "", "pending"):
+        return "pending"
+    if s in ("IN-PROCESS", "WORKING", "working"):
+        return "working"
+    if s in ("COMPLETED", "DONE", "done"):
+        return "done"
+    if s in ("CANCELLED", "CANCELED", "cancelled"):
+        return "cancelled"
+    return "pending"
