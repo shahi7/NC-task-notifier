@@ -252,7 +252,8 @@ def completed(task_key, delta):
     task = state.get(task_key)
     cutoff = datetime.now(timezone.utc) - timedelta(days=delta)
 
-    if task.get("completed_timestamp", "") and datetime(task["completed_timestamp"]) < cutoff:
+    ts = task.get("completed_timestamp", "")
+    if ts and datetime.fromisoformat(ts) < cutoff:
         return True
     return False
 
