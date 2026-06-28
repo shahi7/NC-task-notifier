@@ -1,13 +1,13 @@
 """
 Defines UI elements for Discord notifications, and updates UI on user click
 """
-import asyncio
-import calendar
-from datetime import date
-import discord # type: ignore
-from helpers import load_state
-from update_nextcloud import update_and_retry
-from helpers import notify_delegator
+import asyncio 
+import calendar 
+from datetime import date 
+import discord # type: ignore 
+from helpers import load_state 
+from update_nextcloud import update_and_retry 
+from helpers import notify_delegator 
 
 
 class TaskStatusView(discord.ui.View):
@@ -155,7 +155,7 @@ class DateModal(discord.ui.Modal):
         try:
                 day = int(raw_day)
         except ValueError:
-                await interaction.response.followup.send(
+                await interaction.followup.send(
                         "Date must be an integer from 1-31.",
                         ephemeral=True
                 )
@@ -184,7 +184,7 @@ class DateModal(discord.ui.Modal):
         # convert to closest date in ISO format
         new_deadline_iso = candidate.isoformat()
         try:
-                await update_and_retry(self.task_key, None, new_deadline_iso)
+                await update_and_retry(self.task_key, new_status="", deadline=new_deadline_iso)
         except Exception as e:
                 await interaction.followup.send(f"Deadline update failed: {e}", ephemeral=True)
                 return

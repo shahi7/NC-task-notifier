@@ -90,6 +90,7 @@ class TaskBot(discord.Client):
                                 discord_user_id=job["discord_user_id"],
                                 text=job["text"],
                                 task_key=job["task_key"],
+                                update=job["updated"]
                         )
 
                     # de-queueing
@@ -139,7 +140,7 @@ class TaskBot(discord.Client):
         return msg.id
     
     
-    async def send_task_followup_dm(self, discord_user_id: int, text: str, task_key: str, update: bool):
+    async def send_task_followup_dm(self, discord_user_id: int, text: str, task_key: str, update: dict):
         if discord_user_id is None:
                 return None
 
@@ -151,7 +152,7 @@ class TaskBot(discord.Client):
             subject = str(task.get("subject", "")).strip() or "Nextcloud Task"
             description = str(task.get("description", "")).strip() if task.get("description") else ""
             location = str(task.get("location", "")).strip()
-            deadline_text = text.get("deadline", "").split("T")[0]
+            deadline_text = task.get("deadline", "").split("T")[0]
             parts = [subject]
             if description:
                 parts.append(f"Description: {description}")
@@ -159,7 +160,7 @@ class TaskBot(discord.Client):
                 parts.append(f"Location: {location}")
             if deadline_text:
                 parts.append(f"Deadline: {deadline_text}")
-            new_text = "\n".join(parts), subject, description, deadline_text
+            new_text = "\n".join(parts)
             task["text"] = new_text
 
         discord_user_id = str(discord_user_id)

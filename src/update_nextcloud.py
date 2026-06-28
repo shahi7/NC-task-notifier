@@ -30,11 +30,14 @@ NC_QUEUE_DIR.mkdir(parents=True, exist_ok=True)
 
 # TODO: add to queue to retry on rerun if failed. "Will try again in 5 minutes"
 # in case of temporary server-side connection errors
-async def update_and_retry(task_key: str, new_status: str, deadline: str = "", retries: int = 5):
+async def update_and_retry(task_key: str, new_status: str, allow_requeue: bool = True, deadline: str = "", retries: int = 5):
     last_exc = None
     for attempt in range(retries): 
         try: 
-            return await asyncio.to_thread(update_nextcloud_task, task_key, new_status, deadline) 
+            ok, message = await asyncio.to_thread(update_nextcloud_task, task_key, new_status, deadline)
+            if not ok:
+                raise RuntimeError(message or "Nextcloud update failed")
+            return ok, message 
         except RETRYABLE_ERRORS as e: 
             last_exc = e 
             if attempt == retries - 1: 
@@ -43,15 +46,14 @@ async def update_and_retry(task_key: str, new_status: str, deadline: str = "", r
     
     # queue after retries fail; does not queue more than once
     print("queueing to retry on rerun")
-    if not job.get("allow_requeue", ""):
+    if allow_requeue:
         tmp_path = NC_QUEUE_DIR/f"{uuid.uuid4()}.tmp"
         final_path = NC_QUEUE_DIR/f"{uuid.uuid4()}.json"
-        allow_requeue = False
         job = {
-                task_key: task_key, 
-                new_status: new_status, 
-                deadline: deadline, 
-                allow_requeue: allow_requeue
+                "task_key": task_key, 
+                "new_status": new_status, 
+                "deadline": deadline, 
+                "allow_requeue": allow_requeue
         }
         tmp_path.write_text(json.dumps(job, indent=2))
         tmp_path.rename(final_path)
@@ -69,8 +71,13 @@ async def process_update_queue():
             except FileNotFoundError:
                 continue
             job = json.loads(processing_path.read_text())
-            await update_and_retry(job["task_key"], job["new_status"], job["deadline"])
-            path.unlink()
+            await update_and_retry(
+                job["task_key"],
+                job["new_status"],
+                allow_requeue=job.get("allow_requeue", False),
+                deadline=job.get("deadline", ""),
+            )
+            processing_path.unlink()
         except Exception as e:
             print(f"Queued NC update still failing for {path.name}: {e}")
 
@@ -82,10 +89,6 @@ def update_nextcloud_task(task_key: str, action: str = "", deadline: str = ""):
         return False, "Task not found."
 
     completed_timestamp(task_key, action)
-
-    event_uid = task.get("event_uid")
-    if not event_uid:
-        return False, "Event ID not found."
 
     with get_client() as client:
         calendar = client.calendar(url=CALENDAR_URL)
@@ -108,10 +111,13 @@ def update_nextcloud_task(task_key: str, action: str = "", deadline: str = ""):
 
         # edit_icalendar_instance() alt
         with todo.edit_vobject_instance() as vobj:
+                print("\nedit vobj\n") 
+                vt = vobj.vtodo
                 # update deadline
                 if deadline:
+                     print(deadline)
                      new_due = datetime.fromisoformat(deadline)
-                     vt = vobj.vtodo
+                     print(new_due)
                      if hasattr(vt, "due"):
                          vt.due.value = new_due
                      else:
@@ -121,10 +127,15 @@ def update_nextcloud_task(task_key: str, action: str = "", deadline: str = ""):
                      task["last_deadline_reminder_sent_at"] = None
 
                 if action:
-                        print(task["status"] )
+                        print("\naction update\n") 
+                        print(task["status"])
                         print(action)
-                        print(vobj.vtodo.status.value)
+                        print("\naction\n") 
+                        # print(vobj.vtodo.status.value)
+                        if not hasattr(vt, 'status'):
+                                vt.add("status").value = "NEEDS-ACTION"
                         if task["status"] != action:
+                                vobj.add('status').value = "NEEDS-ACTION"
                                 # handle interaction
                                 if action == "done":
                                         todo.complete()
@@ -137,6 +148,7 @@ def update_nextcloud_task(task_key: str, action: str = "", deadline: str = ""):
                                         if action == "pending":
                                                 vobj.vtodo.status.value = 'NEEDS-ACTION'
                                         elif action == "working":
+                                                print("\nmarekin\n") 
                                                 vobj.vtodo.status.value = 'IN-PROCESS'
                                         else: # cancelled
                                                 vobj.vtodo.status.value = 'CANCELLED'
