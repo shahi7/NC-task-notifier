@@ -34,7 +34,7 @@ SYNC_TOKEN_FILE = Path("calendar_sync_token.txt")
 print("1: script started", flush=True)
 
 # use env vars
-load_dotenv(Path(__file__).resolve().parent.parent / ".env")
+load_dotenv(Path(__file__).resolve().parent / ".env")
 
 REMINDER_HOURS_BEFORE = int(os.getenv("REMINDER_HOURS_BEFORE", "24"))
 REMINDER_DAYS_BEFORE = int(os.getenv("REMINDER_DAYS_BEFORE", "0"))
@@ -126,7 +126,9 @@ def should_send_reminder(task: dict, now: datetime, reminder_deltas: list[timede
 
 
 # handoff layer for persistent TaskBot
-def enqueue_discord_dm(text: str, discord_user_id: int, task_key: str, job_type: str = "send_task_dm", updated: dict = {}):
+def enqueue_discord_dm(text: str, discord_user_id: int, task_key: str, job_type: str = "send_task_dm", updated: dict = None):
+    if not updated:
+        updated = {}
     job = {
         "type": job_type,
         "discord_user_id": discord_user_id,

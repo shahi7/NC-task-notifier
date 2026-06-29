@@ -13,7 +13,7 @@ import asyncio
 import json
 from pathlib import Path
 
-load_dotenv(Path(__file__).resolve().parent.parent / ".env")
+load_dotenv(Path(__file__).resolve().parent / ".env")
 DISCORD_BOT_TOKEN = os.getenv("DISCORD_BOT_TOKEN")
 
 # storing queued DMs from dc_script polling

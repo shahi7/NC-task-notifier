@@ -1,0 +1,22 @@
+services:
+  dc-bot:
+    build: .
+    container_name: dc-bot
+    command: python dc_bot.py
+    restart: unless-stopped
+    env_file:
+      - ../.env
+    working_dir: /app
+    volumes:
+      - ./:/app
+
+  dc-poller:
+    build: .
+    container_name: dc-poller
+    command: sh -c "while true; do python dc-script.py; sleep 300; done"
+    restart: unless-stopped
+    env_file:
+      - ../.env
+    working_dir: /app
+    volumes:
+      - ./:/app

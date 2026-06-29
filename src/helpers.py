@@ -12,7 +12,7 @@ import requests # type: ignore
 from dotenv import load_dotenv # type: ignore
 
 
-load_dotenv(Path(__file__).resolve().parent.parent / ".env")
+load_dotenv(Path(__file__).resolve().parent / ".env")
 
 
 STATE_FILE = Path("task_state.json")
