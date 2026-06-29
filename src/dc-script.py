@@ -115,10 +115,12 @@ def should_send_reminder(task: dict, now: datetime, reminder_deltas: list[timede
 
     # avoid duplicate sends
     sent_deltas = set(task.get("sent_reminder_deltas", []))
+    print(sent_deltas)
 
     for delta in sorted(reminder_deltas, reverse=True):
         reminder_time = deadline - delta
         delta_key = str(delta)
+        print("delta key:", delta_key)
         if now >= reminder_time and delta_key not in sent_deltas:
             return delta_key
 
@@ -397,7 +399,7 @@ def main():
                         if task[field] == "pending": continue
                         update_text += f"New {field}: {task[field].split("T")[0] if field == "deadline" else task[field]}.\n"
                         new_state[task_key]["updated"][field] = False
-            if update_text: text = "This task has been updated:\n" + update_text + "\n"
+            if update_text: text = "This task has been updated.\n" + update_text + "\n"
             else: continue # don't send unnecessary update msgs (always sends when status pending)
             print(text)
 

@@ -130,34 +130,20 @@ def save_state(state):
 
 
 # TODO: debug
-def notify_delegator(button: str, task_key: str):
+def notify_delegator(task_key: str, action: bool = False, deadline: bool = False):
     message, payload, subject = "", "", ""
     state = load_state()
-    # fetch discord username of assignee
-    DISCORD_BOT_TOKEN = os.getenv("DISCORD_BOT_TOKEN")
-    discord_user_id = str(state[task_key]["discord_user_id"])
-    r = requests.get(f"https://discord.com/api/v10/users/{discord_user_id}",
-                 headers={
-                          "Authorization": f"Bot {DISCORD_BOT_TOKEN}",
-                          "User-Agent": "NCDiscordBot (https://github.com/shahi7/NC-task-notifier, v0.1)"
-                })
-    user = r.json().get("username")
     
-    # cancel accept
-    if button == "working" and state[task_key]["status"] == "pending":
-        message = f"@{user} has cancelled this task:\n"
-    # accept
-    elif button == "working":
-        message = f"@{user} has accepted the following task:\n"
-    # cancel done
-    elif button == "done" and state[task_key]["status"] == "pending":
-        message = f"@{user} has updated this task to In-Progress:\n" 
-    # done 
-    elif button == "done":
-        message = f"@{user} has completed the following task:\n"
-       
-    subject = state[task_key]["text"].split("Deadline:")[0]
+    update = ""
+    # status update
+    if action:
+        update += f"Status: {state[task_key]['status']}\n"
+    # deadline update
+    if deadline:
+        update += f"Deadline: {state[task_key]['deadline'].split("T")[0]}\n"
 
+    message=f"The following task has been updated:\n" + update
+    subject = state[task_key]["subject"]
 
     SIGNAL_URL = os.getenv("SIGNAL_URL")
     SIGNAL_SENDER = os.getenv("SIGNAL_SENDER")
@@ -165,7 +151,7 @@ def notify_delegator(button: str, task_key: str):
     payload = {
                 "message": message + f"Task #: {task_key}\n{subject}",
                 "number": SIGNAL_SENDER,
-                "recipients": [USER_MAP_SIGNAL["DELEGATOR"]],
+                "recipients": USER_MAP_SIGNAL["DELEGATOR"],
     }
     print("9c: payload =", payload)
     requests.post(SIGNAL_URL, json=payload, timeout=20)    

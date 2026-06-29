@@ -98,7 +98,7 @@ class TaskButton(discord.ui.Button):
                 await interaction.followup.send(message, ephemeral=True)
 
         print("updating view\n\n")
-        await asyncio.to_thread(notify_delegator, action, task_key)
+        await asyncio.to_thread(notify_delegator, task_key, action=True)
 
 
 class ChangeDeadlineButton(discord.ui.Button):
@@ -212,6 +212,7 @@ class DateModal(discord.ui.Modal):
             content=f"Deadline successfully updated.",
             ephemeral=True
         )
+        await asyncio.to_thread(notify_delegator, self.task_key, deadline=True)
 
 
 def build_task_text(task: dict) -> str:
