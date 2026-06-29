@@ -7,7 +7,7 @@ from datetime import date
 import discord # type: ignore 
 from helpers import load_state 
 from update_nextcloud import update_and_retry 
-from helpers import notify_delegator, normalize_status
+from helpers import notify_delegator, normalize_status, build_task_text
 
 
 class TaskStatusView(discord.ui.View):
@@ -215,19 +215,6 @@ class DateModal(discord.ui.Modal):
         await asyncio.to_thread(notify_delegator, self.task_key, deadline=True)
 
 
-def build_task_text(task: dict) -> str:
-    subject = str(task.get("subject", "")).strip() or "Nextcloud Task"
-    description = str(task.get("description", "")).strip()
-    location = str(task.get("location", "")).strip()
-    deadline = str(task.get("deadline", "")).split("T")[0]
 
-    parts = [subject]
-    if description:
-        parts.append(f"Description: {description}")
-    if location:
-        parts.append(f"Location: {location}")
-    if deadline:
-        parts.append(f"Deadline: {deadline}")
-    return "\n".join(parts)
 
 

@@ -255,3 +255,19 @@ def normalize_status(status) -> str:
     if s in ("CANCELLED", "CANCELED", "cancelled"):
         return "cancelled"
     return "pending"
+
+
+def build_task_text(task: dict) -> str:
+    subject = str(task.get("subject", "")).strip() or "Nextcloud Task"
+    description = str(task.get("description", "")).strip()
+    location = str(task.get("location", "")).strip()
+    deadline = str(task.get("deadline", "")).split("T")[0]
+
+    parts = [subject]
+    if description:
+        parts.append(f"Description: {description}")
+    if location:
+        parts.append(f"Location: {location}")
+    if deadline:
+        parts.append(f"Deadline: {deadline}")
+    return "\n".join(parts)

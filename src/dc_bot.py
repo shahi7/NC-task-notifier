@@ -131,7 +131,7 @@ class TaskBot(discord.Client):
                 "message_id": msg.id,
                 "sent_at": utc_now_iso(),
         }
-        task["text"] = text
+        # task["text"] = text
         state[task_key] = task
         save_state(state)
 

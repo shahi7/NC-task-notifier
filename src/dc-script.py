@@ -3,7 +3,6 @@ Polls NextCloud calendar via CalDAV sync token for newly created/modified VTODOs
 and queues Discord DMs for TaskBot 
 """
 # TODO: test reminder deltas
-# TODO: stale buttons after restart (setup_hook)
 # test: fix followup reminder spam; reminders being sent whenever a task is sent or script is run
 # test: notify assignees upon task update + notify newly added assignees 
 # test: queue pending updates to be retried on next run 
@@ -23,6 +22,7 @@ import uuid
 import json
 from dotenv import load_dotenv # type: ignore
 from helpers import (
+    build_task_text,
     cleanup_old_cache_files,
     completed,
     get_client,
@@ -108,6 +108,8 @@ def should_send_reminder(task: dict, now: datetime, reminder_deltas: list[timede
         return None
     if task.get("new"):
         return "new"
+    if task.get("added_assignees") or task.get("removed_assignees"):
+        return "assignee_change"
 
     deadline = parse_deadline_value(task.get("deadline"))
     if not deadline:
@@ -223,11 +225,15 @@ def store_event(task_key: str, calendar_name: str, event, vtodo, text: str):
     state[task_key].setdefault("previous_message_ids", {})
     state[task_key].setdefault("sent_reminder_deltas", [])
 
+    assignees = []
     # storing delegator and assignee discord/signal ids
-    assignees = [USER_MAP_DC.get(str(a).strip().lower(), "") for a in vtodo.get("CATEGORIES", [])]
-    assignees = [a for a in assignees if a]
-    if old_assignees and old_assignees != assignees:
-        if assignees:
+    if vtodo.get("CATEGORIES", []):
+        assignees = [USER_MAP_DC.get(str(a).strip().lower(), "") for a in vtodo.get("CATEGORIES", [])]
+        assignees = [a for a in assignees if a]
+        # removing all assignees results in no "CATERGORIES" param
+
+    if old_assignees != assignees:
+        # if assignees:
             added = list(set(assignees) - set(old_assignees))
             removed = list(set(old_assignees) - set(assignees))
             if added:
@@ -239,8 +245,8 @@ def store_event(task_key: str, calendar_name: str, event, vtodo, text: str):
                 # looping to preserve existing message_ids
                 for a in removed:
                     state[task_key]["assignees"].remove(a)
-    # brand new task
-    elif not old_assignees: 
+    # brand new task; redundant?
+    if not old_assignees: 
         state[task_key]["assignees"] = list(assignees)
         
     save_state(state)
@@ -359,7 +365,7 @@ def main():
         # delete stale completed tasks
         if completed(task_key, 1):
             print("deleting stale task: ", task_key)
-            continue 
+            continue
         new_state[task_key] = dict(task)
 
         print("13c: checking task_key =", task_key)
@@ -367,20 +373,22 @@ def main():
         # skips if reminder not due and no modificactions to task have been recorded
         due = should_send_reminder(task, now, reminder_deltas)
         if not due and not task.get("updated", False):
-                print("13d: reminder not due for", task_key)
-                continue
+            print("13d: reminder not due for", task_key)
+            continue
         
-        text = task.get("text", "").strip()
+        base_text = build_task_text(task)
+        text = base_text
 
-        # new task 
-        if due == "new":
+        print("due: ", due)
+        # new task; TODO: make states more clear/explicit and narrow down to one canonical stream
+        if due == "new" or due == "assignee_change":
             job_type = "send_task_dm"
             new_state[task_key]["new"] = False
         # routine reminder notif
         elif due:
             print("ITEM DUE!\n")
             job_type = "send_task_followup_dm"
-            text = "Reminder:\n" + text
+            text = "Reminder:\n" + base_text
             new_state[task_key].setdefault("sent_reminder_deltas", [])
             if due in new_state[task_key]["sent_reminder_deltas"]:
                 continue
@@ -396,28 +404,42 @@ def main():
                 print("task marked as updated")
             for field in ["deadline", "location", "status", "subject", "description"]:
                 if task["updated"].get(field, False):
-                        if task[field] == "pending": continue
-                        update_text += f"New {field}: {task[field].split("T")[0] if field == "deadline" else task[field]}.\n"
-                        new_state[task_key]["updated"][field] = False
-            if update_text: text = "This task has been updated.\n" + update_text + "\n"
-            else: continue # don't send unnecessary update msgs (always sends when status pending)
+                    if task[field] == "pending":
+                        continue
+                    update_text += f"New {field}: {task[field].split('T')[0] if field == 'deadline' else task[field]}.\n"
+                    new_state[task_key]["updated"][field] = False
+            if update_text:
+                text = "This task has been updated.\n" + update_text + "\n"
+            else:
+                continue  # don't send unnecessary update msgs (always sends when status pending)
             print(text)
 
-        removed = task.get("removed_assignees", [])
-        added = task.get("added_assignees", [])
-        for discord_id in task.get("assignees", []):
-                # notify of removal from task
-                if removed and discord_id in removed:
-                    text = "You have been removed from the following task:\n" + text
-                    new_state[task_key]["removed_assignees"].remove(discord_id)
-                if added and discord_id in added:
-                    text = "You have been added to the following task:\n" + text
-                    new_state[task_key]["added_assignees"].remove(discord_id)
-                     # new assignee should get canonical message with interactions
-                    enqueue_discord_dm(text, discord_id, task_key, "send_task_dm", task.get("updated", {}))
-                    continue
+        removed = list(task.get("removed_assignees", []))
+        added = list(task.get("added_assignees", []))
 
-                enqueue_discord_dm(text, discord_id, task_key, job_type, task.get("updated", {}))
+        for discord_id in list(task.get("assignees", [])) + removed:
+            user_text = text
+            user_job_type = job_type
+
+            # notify of removal from task
+            if removed and discord_id in removed:
+                user_text = "You have been removed from the following task:\n" + base_text
+                user_job_type = "send_task_followup_dm"
+                if discord_id in new_state[task_key].get("removed_assignees", []):
+                    new_state[task_key]["removed_assignees"].remove(discord_id)
+                enqueue_discord_dm(user_text, discord_id, task_key, user_job_type, task.get("updated", {}))
+                continue
+
+            if added and discord_id in added:
+                user_text = "You have been added to the following task:\n" + base_text
+                if discord_id in new_state[task_key].get("added_assignees", []):
+                    new_state[task_key]["added_assignees"].remove(discord_id)
+                # new assignee should get canonical message with interactions
+                enqueue_discord_dm(user_text, discord_id, task_key, "send_task_dm", task.get("updated", {}))
+                continue
+
+            enqueue_discord_dm(user_text, discord_id, task_key, user_job_type, task.get("updated", {}))
+
         new_state[task_key]["added_assignees"] = []
         new_state[task_key]["removed_assignees"] = []
         new_state[task_key]["updated"] = {}
