@@ -4,10 +4,6 @@ and queues Discord DMs for TaskBot
 """
 # TODO: test reminder deltas
 # test: fix followup reminder spam; reminders being sent whenever a task is sent or script is run
-# test: notify assignees upon task update + notify newly added assignees 
-# test: queue pending updates to be retried on next run 
-
-# TODO: notify delegator 
 
 # server-side failure handling: 
 # script fails to fetch events from sync token -> cron reschedules script -> eventual success
