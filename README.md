@@ -18,10 +18,17 @@ The polling script checks the Nextcloud calendar for new and changed tasks, writ
 - Send task DMs to newly added assignees and notify removed assignees of removal.
 - Retry queue to work around temporary Discord/Nextcloud network failures.
 
+## Running the system
+
+The system has two long-running responsibilities:
+
+- **Poller**: checks Nextcloud regularly and enqueues work.
+- **Bot**: stays connected to Discord and processes queued notifications.
+
 ## How work flows
 
 1. A delegator creates or modifies a task in Nextcloud.
-2. The polling script reads new/modified tasks from the tasks calendar.
+2. The poller reads new/modified tasks from the tasks calendar.
 3. The script stores task metadata locally.
 4. A DM job is queued for each target Discord user.
 5. The bot processes the DM queue and sends/follows-up in Discord DMs.
@@ -42,7 +49,7 @@ See the below image for a visual guide on Nextcloud task creation.
 
 ## Assignee setup
 
-Assignees are the people who receive task DMs and interact with them in Discord.]
+Assignees are the people who receive task DMs and interact with them in Discord.
 
 - Join the SAA Discord server.
 - Allow DMs from server members for the SAA server.
@@ -67,13 +74,6 @@ The most important environment values usually include:
 - `CALENDAR_URL`: URL for target task calendar.
 - `USER_MAP_DC`: mapping from task assignee labels to Discord user IDs.
 - `REMINDER_DELTAS`: how long before a deadline reminder should be sent.
-
-## Running the system
-
-The system has two long-running responsibilities:
-
-- **Poller**: checks Nextcloud regularly and enqueues work.
-- **Bot**: stays connected to Discord and processes queued notifications.
 
 ## Error handling
 
