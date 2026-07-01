@@ -76,7 +76,7 @@ The system is designed to tolerate temporary failures rather than crash and drop
 - Update sync jobs from Discord to Nextcloud may fail due to temporary network issues, and are queued to be retried later.
 
 ### Common failure cases
-
+This information is useful for delegators and developers when troubleshooting.
 | Problem | Likely cause | What to check |
 |---|---|---|
 | No DM sent for a new task | Assignee mapping missing or empty | Confirm `USER_MAP_DC` entry and task assignee label match |
