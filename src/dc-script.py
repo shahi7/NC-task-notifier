@@ -220,6 +220,7 @@ def store_event(task_key: str, calendar_name: str, event, vtodo, text: str):
 
     # INITIALIZING
     state[task_key].setdefault("discord_messages", {})
+    state[task_key].setdefault("assignees", [])
     state[task_key].setdefault("previous_message_ids", {})
     state[task_key].setdefault("sent_reminder_deltas", [])
 
