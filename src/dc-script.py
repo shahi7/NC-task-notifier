@@ -106,6 +106,8 @@ def should_send_reminder(task: dict, now: datetime, reminder_deltas: list[timede
         return "new"
     if task.get("added_assignees") or task.get("removed_assignees"):
         return "assignee_change"
+    if task.get("updated", False):
+        return "updated"
 
     deadline = parse_deadline_value(task.get("deadline"))
     if not deadline:
@@ -371,7 +373,7 @@ def main():
 
         # skips if reminder not due and no modificactions to task have been recorded
         due = should_send_reminder(task, now, reminder_deltas)
-        if not due and not task.get("updated", False):
+        if not due:
             print("13d: reminder not due for", task_key)
             continue
         
@@ -383,18 +385,8 @@ def main():
         if due == "new" or due == "assignee_change":
             job_type = "send_task_dm"
             new_state[task_key]["new"] = False
-        # routine reminder notif
-        elif due:
-            print("ITEM DUE!\n")
-            job_type = "send_task_followup_dm"
-            text = "Reminder:\n" + base_text
-            new_state[task_key].setdefault("sent_reminder_deltas", [])
-            if due in new_state[task_key]["sent_reminder_deltas"]:
-                continue
-            new_state[task_key]["sent_reminder_deltas"].append(due)
-            new_state[task_key]["last_deadline_reminder_sent_at"] = utc_now_iso()
         # update notif; don't touch routine reminder state/logic
-        else:
+        elif due == "updated":
             print("ITEM UPDATE!\n")
             job_type = "send_task_followup_dm"
             # checking if info has been updated and notifying assignees
@@ -412,6 +404,16 @@ def main():
             else:
                 continue  # don't send unnecessary update msgs (always sends when status pending)
             print(text)
+        # routine reminder notif
+        elif due:
+            print("ITEM DUE!\n")
+            job_type = "send_task_followup_dm"
+            text = "Reminder:\n" + base_text
+            new_state[task_key].setdefault("sent_reminder_deltas", [])
+            if due in new_state[task_key]["sent_reminder_deltas"]:
+                continue
+            new_state[task_key]["sent_reminder_deltas"].append(due)
+            new_state[task_key]["last_deadline_reminder_sent_at"] = utc_now_iso()
 
         removed = list(task.get("removed_assignees", []))
         added = list(task.get("added_assignees", []))
