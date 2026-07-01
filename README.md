@@ -36,6 +36,10 @@ Delegators are the people creating and assigning tasks in Nextcloud.
 - Create tasks in Apps > Tasks. Tasks will be visible in the corresponding calendar.
 - Add assignees by entering assignee first names in the Tags section.
 
+See the below image for a visual guide on Nextcloud task creation.
+
+<img width="403" height="609" alt="Screenshot 2026-06-30 at 8 57 25 PM" src="https://github.com/user-attachments/assets/445d0e91-e61b-4c2b-bcf2-6e18c4530c46" />
+
 ## Assignee setup
 
 Assignees are the people who receive task DMs and interact with them in Discord.]
@@ -49,6 +53,11 @@ Assignees are the people who receive task DMs and interact with them in Discord.
 - Buttons to accept, cancel, complete, or update a deadline depending on task state.
 - Follow-up reminder messages that reference the original task DM.
 - Update messages when the task changes.
+
+<div align="center">
+  <img src="https://github.com/user-attachments/assets/b29e2a86-879d-4849-af27-b6f346ed6f5e" width="45%" />
+  <img src="https://github.com/user-attachments/assets/dfff0991-d6e6-4d02-9462-71c8225a9ef1" width="45%" />
+</div>
 
 ## Configuration
 
