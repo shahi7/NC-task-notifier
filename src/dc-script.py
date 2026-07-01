@@ -23,6 +23,7 @@ from helpers import (
     completed,
     get_client,
     load_state,
+    normalize_status,
     save_state,
     utc_now_iso,
 )
@@ -93,20 +94,20 @@ def normalize_deadline(value):
     if value is None:
         return ""
     if isinstance(value, datetime):
-        return value.isoformat()
-    return str(value).strip()
+        return value.date().isoformat()
+    return str(value).strip().split("T")[0]
 
 
 # checks if it is time to send a reminder (check deltas or if task is new)
 def should_send_reminder(task: dict, now: datetime, reminder_deltas: list[timedelta]):
     status = task.get("status", "pending")
-    if status == "done":
+    if normalize_status(status) == "done":
         return None
     if task.get("new"):
         return "new"
     if task.get("added_assignees") or task.get("removed_assignees"):
         return "assignee_change"
-    if task.get("updated", False):
+    if task.get("updated", {}):
         return "updated"
 
     deadline = parse_deadline_value(task.get("deadline"))
@@ -183,26 +184,36 @@ def store_event(task_key: str, calendar_name: str, event, vtodo, text: str):
         state[task_key]["new"] = True
     else:
         # checking (below) if any assignees have been added or removed
-        old_assignees = state[task_key].get("assignees", "")
+        old_assignees = state[task_key].get("assignees", [])
 
         # check if any info is being modified to notify assignees; values updated below
         state[task_key]["updated"] = {}
         stored = normalize_deadline(state[task_key].get("deadline"))
-        current = normalize_deadline(vtodo.get("DUE"))
+        current_due = None
+        try:
+            current_due = vtodo.decoded("DUE") if vtodo.get("DUE") else None
+        except Exception:
+            current_due = vtodo.get("DUE")
+        current = normalize_deadline(current_due)
         print("stored: ", stored)
         print("current: ", current)
         if stored and current != stored:
             state[task_key]["updated"]["deadline"] = True
         
         for field in ["LOCATION", "STATUS", "SUBJECT", "DESCRIPTION"]:
-                if field == "SUBJECT": actual = "SUMMARY"
-                else: actual = field
+                actual = "SUMMARY" if field == "SUBJECT" else field
                 field = field.lower()
 
-                if state[task_key].get(field, "") and vtodo.get(actual) != state[task_key][field]: 
-                    print(vtodo.get(actual))
-                    print(state[task_key][field])
-                    state[task_key]["updated"][field] = True
+                if field == "STATUS":
+                        current_value = normalize_status(vtodo.get(actual))
+                        stored_value = normalize_status(stored_value)
+                else:
+                        current_value = str(vtodo.get(actual, "") or "").strip()
+                        stored_value = str(stored_value or "").strip()
+
+                if stored_value and current_value != stored_value:
+                        print("changed:", field, "stored=", stored_value, "current=", current_value)
+                        state[task_key]["updated"][field] = True
 
     due = vtodo.decoded("DUE").isoformat() if vtodo.get("DUE") else None
 
