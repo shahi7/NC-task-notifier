@@ -1,0 +1,36 @@
+services:
+  bot:
+    build: .
+    container_name: nc-discord-bot
+    command: python -u dc_bot.py
+    env_file:
+      - .env
+    environment:
+      DATA_DIR: /app/data
+    restart: unless-stopped
+    volumes:
+      - ./data:/app/data
+    working_dir: /app
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  poller:
+    build: .
+    container_name: nc-discord-poller
+    command: /usr/local/bin/supercronic -debug /app/poller.crontab
+    env_file:
+      - .env
+    environment:
+      DATA_DIR: /app/data
+    restart: unless-stopped
+    volumes:
+      - ./data:/app/data
+    working_dir: /app
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
