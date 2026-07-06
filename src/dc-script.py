@@ -2,7 +2,7 @@
 Polls NextCloud calendar via CalDAV sync token for newly created/modified VTODOs
 and queues Discord DMs for TaskBot 
 """
-# TODO: test reminder deltas
+# TODO: test reminder deltas + negative reminder deltas (for missed deadlines)
 # test: fix followup reminder spam; reminders being sent whenever a task is sent or script is run
 
 # server-side failure handling: 
@@ -119,11 +119,23 @@ def should_send_reminder(task: dict, now: datetime, reminder_deltas: list[timede
     print(sent_deltas)
 
     for delta in sorted(reminder_deltas, reverse=True):
-        reminder_time = deadline - delta
-        delta_key = str(delta)
-        print("delta key:", delta_key)
-        if now >= reminder_time and delta_key not in sent_deltas:
-            return delta_key
+        # if deadline hasn't passed
+        if delta >= timedelta(0):
+                reminder_time = deadline - delta
+                delta_key = str(delta)
+                print("delta key:", delta_key)
+                if now >= reminder_time and delta_key not in sent_deltas:
+                        return delta_key
+        # if deadline has passed and task is incomplete, send 1 daily reminder
+        else:
+                overdue_start = deadline + abs(delta)
+                if now < overdue_start:
+                        continue
+
+                overdue_days = (now.date() - overdue_start.date()).days + 1
+                delta_key = f"overdue:{abs(delta).days}:{overdue_days}"
+                if delta_key not in sent_deltas:
+                        return delta_key
 
     return None
 
