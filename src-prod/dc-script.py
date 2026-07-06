@@ -218,10 +218,10 @@ def store_event(task_key: str, calendar_name: str, event, vtodo, text: str):
 
                 if field == "STATUS":
                         current_value = normalize_status(vtodo.get(actual))
-                        stored_value = normalize_status(stored_value)
+                        stored_value = normalize_status(state[task_key].get("status", ""))
                 else:
                         current_value = str(vtodo.get(actual, "") or "").strip()
-                        stored_value = str(stored_value or "").strip()
+                        stored_value = str(state[task_key].get(f"{field}", "")).strip()
 
                 if stored_value and current_value != stored_value:
                         print("changed:", field, "stored=", stored_value, "current=", current_value)
