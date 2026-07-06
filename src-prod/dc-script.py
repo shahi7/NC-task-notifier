@@ -404,8 +404,9 @@ def main():
         text = base_text
 
         print("due: ", due)
-        # new task; TODO: make states more clear/explicit and narrow down to one canonical stream
-        if due == "new" or due == "assignee_change":
+        # new task
+        job_type = None
+        if due in ("new", "assignee_change"):
             job_type = "send_task_dm"
             new_state[task_key]["new"] = False
         # update notif; don't touch routine reminder state/logic
