@@ -42,3 +42,4 @@ logs/
 *.timer
 src/calendar_sync_token.txt
 src-prod/calendar_sync_token.txt
+src/calendar_sync_token.txt
