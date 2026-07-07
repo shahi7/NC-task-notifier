@@ -1,0 +1,7 @@
+.env
+secrets/
+vault-agent/role_id
+vault-agent/secret_id
+data/
+__pycache__/
+*.pyc

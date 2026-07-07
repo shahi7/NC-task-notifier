@@ -3,17 +3,17 @@ Persistent Discord bot for polling notification queue (updated by dc_script), se
 and dynamically updating UI 
 """
 #!/usr/bin/env python3 
-import os
-import discord # type: ignore
-from dotenv import load_dotenv # type: ignore
-from helpers import load_state, save_state, utc_now_iso
-from dc_bot_ui import TaskStatusView
 import asyncio
 import json
 from pathlib import Path
+import os
+import discord # type: ignore
+from dotenv import load_dotenv # type: ignore
+from helpers import load_state, save_state, utc_now_iso, get_secret
+from dc_bot_ui import TaskStatusView
 
 load_dotenv(Path(__file__).resolve().parent / ".env")
-DISCORD_BOT_TOKEN = os.getenv("DISCORD_BOT_TOKEN")
+DISCORD_BOT_TOKEN = get_secret("DISCORD_BOT_TOKEN")
 
 # storing queued DMs from dc_script polling
 DATA_DIR = Path(os.getenv("DATA_DIR", "/app/data"))
@@ -24,6 +24,7 @@ FAILED_DIR = DATA_DIR / "queue" / "failed"
 
 for d in [PENDING_DIR, PROCESSING_DIR, DONE_DIR, FAILED_DIR]:
     d.mkdir(parents=True, exist_ok=True)
+
 
 class TaskBot(discord.Client):
     def __init__(self, *args, **kwargs):

@@ -1,0 +1,1 @@
+{{ with secret "secret/data/taskbot" }}{{ .Data.data.SIGNAL_SENDER }}{{ end }}

@@ -5,7 +5,7 @@ and queues Discord DMs for TaskBot
 # TODO: test reminder deltas + negative reminder deltas (for missed deadlines)
 # test: fix followup reminder spam; reminders being sent whenever a task is sent or script is run
 
-# server-side failure handling: 
+# server-side failure handling:
 # script fails to fetch events from sync token -> cron reschedules script -> eventual success
 # bot fails to send dm/sync an update to NC -> update goes into processing queue to be retried
         # IMPORTANT: increase sleep times between enqueues to avoid performance overload
@@ -26,11 +26,12 @@ from helpers import (
     normalize_status,
     save_state,
     utc_now_iso,
+    get_secret
 )
 
-QUEUE_DIR = Path("queue/pending")
-QUEUE_DIR.mkdir(parents=True, exist_ok=True)
-SYNC_TOKEN_FILE = Path("calendar_sync_token.txt")
+DATA_DIR = Path(os.getenv("DATA_DIR", "/app/data"))
+QUEUE_DIR = DATA_DIR / "queue" / "pending"
+SYNC_TOKEN_FILE = DATA_DIR / "calendar_sync_token.txt"
 
 print("1: script started", flush=True)
 
@@ -41,12 +42,12 @@ REMINDER_HOURS_BEFORE = int(os.getenv("REMINDER_HOURS_BEFORE", "24"))
 REMINDER_DAYS_BEFORE = int(os.getenv("REMINDER_DAYS_BEFORE", "0"))
 REMINDER_DELTAS = json.loads(os.getenv("REMINDER_DELTAS", "[]"))
 
-DISCORD_BOT_TOKEN = os.getenv("DISCORD_BOT_TOKEN")
-USER_MAP_DC = json.loads(os.getenv("USER_MAP_DC", "{}"))
-USER_MAP_SIGNAL = json.loads(os.getenv("USER_MAP_SIGNAL", "{}"))
+DISCORD_BOT_TOKEN = get_secret("DISCORD_BOT_TOKEN")
+USER_MAP_DC = json.loads(get_secret("USER_MAP_DC", "{}"))
+USER_MAP_SIGNAL = json.loads(get_secret("USER_MAP_SIGNAL", "{}"))
 
-CALENDAR_NAME = os.getenv("CALENDAR_NAME")
-CALENDAR_URL = os.getenv("CALENDAR_URL")
+CALENDAR_NAME = get_secret("CALENDAR_NAME")
+CALENDAR_URL = get_secret("CALENDAR_URL")
 
 print("2: config loaded")
 print("2b: USER_MAP keys =", list(USER_MAP_DC.keys()))
@@ -218,10 +219,10 @@ def store_event(task_key: str, calendar_name: str, event, vtodo, text: str):
 
                 if field == "STATUS":
                         current_value = normalize_status(vtodo.get(actual))
-                        stored_value = normalize_status(stored_value)
+                        stored_value = normalize_status(state[task_key].get("status", ""))
                 else:
                         current_value = str(vtodo.get(actual, "") or "").strip()
-                        stored_value = str(stored_value or "").strip()
+                        stored_value = str(state[task_key].get(f"{field}", "")).strip()
 
                 if stored_value and current_value != stored_value:
                         print("changed:", field, "stored=", stored_value, "current=", current_value)
@@ -404,8 +405,9 @@ def main():
         text = base_text
 
         print("due: ", due)
-        # new task; TODO: make states more clear/explicit and narrow down to one canonical stream
-        if due == "new" or due == "assignee_change":
+        # new task
+        job_type = None
+        if due in ("new", "assignee_change"):
             job_type = "send_task_dm"
             new_state[task_key]["new"] = False
         # update notif; don't touch routine reminder state/logic

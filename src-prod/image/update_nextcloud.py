@@ -9,12 +9,12 @@ import os
 from pathlib import Path
 import uuid
 import requests # type: ignore
-from helpers import completed_timestamp, get_client, load_state, utc_now_iso, save_state, normalize_status
+from helpers import completed_timestamp, get_client, load_state, utc_now_iso, save_state, normalize_status, get_secret
 from caldav.calendarobjectresource import Todo # type: ignore
 print(Todo)
 
-CALENDAR_NAME = os.getenv("CALENDAR_NAME")
-CALENDAR_URL = os.getenv("CALENDAR_URL")
+CALENDAR_NAME = get_secret("CALENDAR_NAME")
+CALENDAR_URL = get_secret("CALENDAR_URL")
 
 RETRYABLE_ERRORS = (
     ConnectionError,

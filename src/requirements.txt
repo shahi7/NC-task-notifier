@@ -1,8 +1,0 @@
-discord.py
-python-dotenv
-requests
-caldav
-icalendar
-vobject
-lxml
-recurring-ical-events

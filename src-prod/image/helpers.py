@@ -2,28 +2,37 @@
 Parsing, local cache, and local metadata helper functions
 """
 
-
-import json
-import caldav # type: ignore
 from datetime import datetime, timezone, timedelta
 import os
 from pathlib import Path
+import json
+from caldav import DAVClient # type: ignore
 import requests # type: ignore
 from dotenv import load_dotenv # type: ignore
 
-
 load_dotenv(Path(__file__).resolve().parent / ".env")
 
+DATA_DIR = Path(os.getenv("DATA_DIR", "/app/data"))
+STATE_FILE = DATA_DIR / "task_state.json"
+CACHE_DIR = DATA_DIR
 
-STATE_FILE = Path("task_state.json")
 CACHE_KEEP_DAYS = 3
-CACHE_DIR = Path(".")
 TODAY = datetime.now(timezone.utc).date().isoformat()
 CACHE_FILE = CACHE_DIR / f"sent_notifications_{TODAY}.json"
 
 
-NEXTCLOUD_USER = os.getenv("NEXTCLOUD_USER")
-NEXTCLOUD_PASS = os.getenv("NEXTCLOUD_PASS")
+def get_secret(name: str, default: str | None = None) -> str | None:
+    file_var = os.getenv(f"{name}_FILE")
+    if file_var:
+        return Path(file_var).read_text(encoding="utf-8").strip()
+    value = os.getenv(name)
+    if value is not None:
+        return value
+    return default
+
+
+NEXTCLOUD_USER = get_secret("NEXTCLOUD_USER")
+NEXTCLOUD_PASS = get_secret("NEXTCLOUD_PASS")
 NEXTCLOUD_BASE_URL = os.getenv("NEXTCLOUD_BASE_URL")
 
 
@@ -140,14 +149,14 @@ def notify_delegator(task_key: str, action: bool = False, deadline: bool = False
         update += f"Status: {state[task_key]['status']}\n"
     # deadline update
     if deadline:
-        update += f"Deadline: {state[task_key]['deadline'].split("T")[0]}\n"
+        update += f"Deadline: {state[task_key]['deadline'].split('T')[0]}\n"
 
-    message=f"The following task has been updated:\n" + update
+    message="The following task has been updated:\n" + update
     subject = state[task_key]["subject"]
 
     SIGNAL_URL = os.getenv("SIGNAL_URL")
-    SIGNAL_SENDER = os.getenv("SIGNAL_SENDER")
-    USER_MAP_SIGNAL = json.loads(os.getenv("USER_MAP_SIGNAL", "{}"))
+    SIGNAL_SENDER = get_secret("SIGNAL_SENDER")
+    USER_MAP_SIGNAL = json.loads(get_secret("USER_MAP_SIGNAL", "{}"))
     payload = {
                 "message": message + f"Task #: {task_key}\n{subject}",
                 "number": SIGNAL_SENDER,
@@ -159,11 +168,12 @@ def notify_delegator(task_key: str, action: bool = False, deadline: bool = False
 
 def get_client():
     try:
-        return caldav.DAVClient(
+        client = DAVClient( # pylint: disable=not-callable
             url=NEXTCLOUD_BASE_URL + "/remote.php/dav",
             username=NEXTCLOUD_USER,
             password=NEXTCLOUD_PASS,
-        ) 
+        )
+        return client
     except Exception as e:
         print(repr(e))
 
@@ -271,3 +281,6 @@ def build_task_text(task: dict) -> str:
     if deadline:
         parts.append(f"Deadline: {deadline}")
     return "\n".join(parts)
+
+
+

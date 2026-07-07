@@ -1,0 +1,1 @@
+{{ with secret "secret/data/taskbot" }}{{ .Data.data.DISCORD_BOT_TOKEN }}{{ end }}

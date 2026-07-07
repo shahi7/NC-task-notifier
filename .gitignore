@@ -42,3 +42,11 @@ logs/
 *.timer
 src/calendar_sync_token.txt
 src-prod/calendar_sync_token.txt
+src-prod/secrets/user_map_signal
+src-prod/secrets/user_map_dc
+src-prod/secrets/signal_sender
+src-prod/secrets/nextcloud_user
+src-prod/secrets/nextcloud_pass
+src-prod/secrets/discord_bot_token
+src-prod/secrets/calendar_url
+src-prod/secrets/calendar_name

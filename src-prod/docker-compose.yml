@@ -1,4 +1,26 @@
 services:
+  vault-agent:
+    image: hashicorp/vault:1.18
+    container_name: nc-vault-agent
+    command: vault agent -config=/vault-agent/agent.hcl
+    environment:
+      VAULT_ADDR: http://vault:8200
+    volumes:
+      - ./vault-agent:/vault-agent:ro
+      - secrets-vol:/shared-secrets
+    restart: unless-stopped
+
+  signal-api:
+    image: bbernhard/signal-cli-rest-api:latest
+    container_name: nc-signal-api
+    environment:
+      MODE: "native"
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./signal-data:/home/.local/share/signal-cli
+    restart: unless-stopped
+
   bot:
     build: .
     container_name: nc-discord-bot
@@ -7,15 +29,22 @@ services:
       - .env
     environment:
       DATA_DIR: /app/data
-    restart: unless-stopped
+      DISCORD_BOT_TOKEN_FILE: /run/secrets/discord_bot_token
+      NEXTCLOUD_USER_FILE: /run/secrets/nextcloud_user
+      NEXTCLOUD_PASS_FILE: /run/secrets/nextcloud_pass
+      NEXTCLOUD_BASE_URL_FILE: /run/secrets/nextcloud_base_url
+      SIGNAL_URL_FILE: /run/secrets/signal_url
+      SIGNAL_URL_GET_FILE: /run/secrets/signal_url_get
+      SIGNAL_SENDER_FILE: /run/secrets/signal_sender
+      USER_MAP_DC_FILE: /run/secrets/user_map_dc
+      USER_MAP_SIGNAL_FILE: /run/secrets/user_map_signal
+    depends_on:
+      - vault-agent
+      - signal-api
     volumes:
       - ./data:/app/data
-    working_dir: /app
-    logging:
-      driver: json-file
-      options:
-        max-size: "10m"
-        max-file: "3"
+      - secrets-vol:/run/secrets:ro
+    restart: unless-stopped
 
   poller:
     build: .
@@ -25,12 +54,22 @@ services:
       - .env
     environment:
       DATA_DIR: /app/data
-    restart: unless-stopped
+      DISCORD_BOT_TOKEN_FILE: /run/secrets/discord_bot_token
+      NEXTCLOUD_USER_FILE: /run/secrets/nextcloud_user
+      NEXTCLOUD_PASS_FILE: /run/secrets/nextcloud_pass
+      NEXTCLOUD_BASE_URL_FILE: /run/secrets/nextcloud_base_url
+      SIGNAL_URL_FILE: /run/secrets/signal_url
+      SIGNAL_URL_GET_FILE: /run/secrets/signal_url_get
+      SIGNAL_SENDER_FILE: /run/secrets/signal_sender
+      USER_MAP_DC_FILE: /run/secrets/user_map_dc
+      USER_MAP_SIGNAL_FILE: /run/secrets/user_map_signal
+    depends_on:
+      - vault-agent
+      - signal-api
     volumes:
       - ./data:/app/data
-    working_dir: /app
-    logging:
-      driver: json-file
-      options:
-        max-size: "10m"
-        max-file: "3"
+      - secrets-vol:/run/secrets:ro
+    restart: unless-stopped
+
+volumes:
+  secrets-vol:
