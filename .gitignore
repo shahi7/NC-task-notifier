@@ -53,7 +53,9 @@ src-prod/secrets/calendar_name
 
 vault/role_id
 vault/secret_id
-src-prod/vault/role_id
-src-prod/vault/templates/delegations_json.ctmpl
-src-prod/vault/templates/delegator_discord_id
-src-prod/vault/templates/vault_admin_token.ctmpl
+src-prod/vault-agent/role_id
+src-prod/vault-agent/templates/delegations_json.ctmpl
+src-prod/vault-agent/templates/delegator_discord_id
+src-prod/vault-agent/templates/vault_admin_token.ctmpl
+src-prod/vault-agent/secret_id
+src-prod/taskbot-policy.hcl

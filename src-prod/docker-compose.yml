@@ -16,10 +16,12 @@ services:
   vault-agent:
     image: hashicorp/vault:1.18
     container_name: nc-vault-agent
-    command: vault agent -config=/vault/agent.hcl
+    command: vault agent -config=/vault-agent/agent.hcl
     environment:
-      # TODO: local
-      VAULT_ADDR: http://vault:8200
+      VAULT_ADDR: http://vault:8200 # local
+    user: "0:0"
+    depends_on: # local
+      - vault
     volumes:
       - ./vault-agent:/vault-agent:ro
       - secrets-vol:/shared-secrets

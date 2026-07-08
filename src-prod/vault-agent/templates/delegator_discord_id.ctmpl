@@ -1,0 +1,1 @@
+{{ with secret "secret/data/taskbot" }}{{ .Data.data.DELEGATOR_DISCORD_ID }}{{ end }}
