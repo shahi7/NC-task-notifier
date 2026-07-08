@@ -153,14 +153,22 @@ def notify_delegator(task_key: str, action: bool = False, deadline: bool = False
 
     message="The following task has been updated:\n" + update
     subject = state[task_key]["subject"]
+    USER_MAP_SIGNAL = get_secret("USER_MAP_SIGNAL", {})
+
+    delegator_signal_key = str(state[task_key].get("delegator_signal_key", "")).strip()
+    recipients = USER_MAP_SIGNAL.get(delegator_signal_key, [])
 
     SIGNAL_URL = os.getenv("SIGNAL_URL")
     SIGNAL_SENDER = get_secret("SIGNAL_SENDER")
-    USER_MAP_SIGNAL = json.loads(get_secret("USER_MAP_SIGNAL", "{}"))
+
+    if not SIGNAL_URL or not SIGNAL_SENDER or not recipients:
+        print("notify_delegator: missing signal config or recipients for", task_key)
+        return
+
     payload = {
                 "message": message + f"Task #: {task_key}\n{subject}",
                 "number": SIGNAL_SENDER,
-                "recipients": USER_MAP_SIGNAL["DELEGATOR"],
+                "recipients": recipients,
     }
     print("9c: payload =", payload)
     requests.post(SIGNAL_URL, json=payload, timeout=20)    

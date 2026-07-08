@@ -90,8 +90,12 @@ def update_nextcloud_task(task_key: str, action: str = "", deadline: str = ""):
 
     completed_timestamp(task_key, action)
 
+    calendar_url = str(task.get("calendar_url", "")).strip()
+    if not calendar_url:
+        return False, "Calendar URL not found in task state."
+
     with get_client() as client:
-        calendar = client.calendar(url=CALENDAR_URL)
+        calendar = client.calendar(url=calendar_url)
         if calendar is None:
             return False, "Calendar not found."
 

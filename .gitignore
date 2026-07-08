@@ -50,3 +50,10 @@ src-prod/secrets/nextcloud_pass
 src-prod/secrets/discord_bot_token
 src-prod/secrets/calendar_url
 src-prod/secrets/calendar_name
+
+vault/role_id
+vault/secret_id
+src-prod/vault/role_id
+src-prod/vault/templates/delegations_json.ctmpl
+src-prod/vault/templates/delegator_discord_id
+src-prod/vault/templates/vault_admin_token.ctmpl

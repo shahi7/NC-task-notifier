@@ -31,7 +31,8 @@ from helpers import (
 
 DATA_DIR = Path(os.getenv("DATA_DIR", "/app/data"))
 QUEUE_DIR = DATA_DIR / "queue" / "pending"
-SYNC_TOKEN_FILE = DATA_DIR / "calendar_sync_token.txt"
+SYNC_TOKEN_DIR = DATA_DIR / "sync_tokens"
+SYNC_TOKEN_DIR.mkdir(parents=True, exist_ok=True)
 
 print("1: script started", flush=True)
 
@@ -46,22 +47,27 @@ DISCORD_BOT_TOKEN = get_secret("DISCORD_BOT_TOKEN")
 USER_MAP_DC = json.loads(get_secret("USER_MAP_DC", "{}"))
 USER_MAP_SIGNAL = json.loads(get_secret("USER_MAP_SIGNAL", "{}"))
 
-CALENDAR_NAME = get_secret("CALENDAR_NAME")
-CALENDAR_URL = get_secret("CALENDAR_URL")
+# CALENDAR_NAME = get_secret("CALENDAR_NAME")
+# CALENDAR_URL = get_secret("CALENDAR_URL")
 
 print("2: config loaded")
 print("2b: USER_MAP keys =", list(USER_MAP_DC.keys()))
 
 
-def load_sync_token():
-    if not SYNC_TOKEN_FILE.exists():
+def sync_token_path(delegation_id: str) -> Path:
+    return SYNC_TOKEN_DIR / f"{delegation_id}.txt"
+
+
+def load_sync_token(delegation_id: str):
+    path = sync_token_path(delegation_id)
+    if not path.exists():
         return None
-    return SYNC_TOKEN_FILE.read_text().strip() or None
+    return path.read_text().strip() or None
 
 
-def save_sync_token(token):
+def save_sync_token(delegation_id: str, token):
     if token:
-        SYNC_TOKEN_FILE.write_text(token)
+        sync_token_path(delegation_id).write_text(token)
 
 
 def parse_deadline_value(value):
@@ -186,7 +192,7 @@ def parse_vtodo(vtodo):
 
 
 # store event info (importantly, event uid) once vtodo obtained
-def store_event(task_key: str, calendar_name: str, event, vtodo, text: str):
+def store_event(task_key: str, delegation: dict, event, vtodo, text: str):
     state = load_state()
     task_key = str(task_key)
 
@@ -230,7 +236,13 @@ def store_event(task_key: str, calendar_name: str, event, vtodo, text: str):
 
     due = vtodo.decoded("DUE").isoformat() if vtodo.get("DUE") else None
 
-    state[task_key]["calendar_name"] = (calendar_name or "").strip().lower()
+    # allowing multiple delegators and calendars 
+    state[task_key]["delegation_id"] = str(delegation.get("id", "")).strip()
+    state[task_key]["calendar_name"] = str(delegation.get("calendar_name", "")).strip().lower()
+    state[task_key]["calendar_url"] = str(delegation.get("calendar_url", "")).strip()
+    state[task_key]["delegator_discord_id"] = str(delegation.get("delegator_discord_id", "")).strip()
+    state[task_key]["delegator_signal_key"] = str(delegation.get("delegator_signal_key", "")).strip()
+
     state[task_key]["status"] = str(vtodo.get("STATUS", "")).strip() if vtodo.get("STATUS") else "pending"
     state[task_key]["object_type"] = "caldav_event"
     state[task_key]["object_id"] = str(vtodo.get("UID", "")).strip()
@@ -250,10 +262,15 @@ def store_event(task_key: str, calendar_name: str, event, vtodo, text: str):
     state[task_key].setdefault("previous_message_ids", {})
     state[task_key].setdefault("sent_reminder_deltas", [])
 
+    # in case user map updated via slash command
+    user_map_dc = delegation.get("user_map_dc", {}) or {}
     assignees = []
-    # storing delegator and assignee discord/signal ids
+    # storing delegator and assignee discord/signal id
     if vtodo.get("CATEGORIES", []):
-        assignees = [USER_MAP_DC.get(str(a).strip().lower(), "") for a in vtodo.get("CATEGORIES", [])]
+        assignees = [
+            user_map_dc.get(str(a).strip().lower(), "")
+            for a in vtodo.get("CATEGORIES", [])
+        ]
         assignees = [a for a in assignees if a]
         # removing all assignees results in no "CATERGORIES" param
 
@@ -285,46 +302,57 @@ def sync_calendar():
     print("8: entering process_calendar_changes")
 
     changed_items = []
-    changes = []
 
-    print("before get_calendar", flush=True)
     with get_client() as client:
-        calendar = client.calendar(url=CALENDAR_URL)
-        print("after get_calendar", flush=True)
-        print("calendar =", repr(calendar), flush=True)
-        print("calendar is None =", calendar is None, flush=True)
-        if calendar is not None:
-            # initializing token
-            old_token = load_sync_token()
-            print("8a: old_token =", old_token)
-            # load_objects increases immediate overhead but is necessary for accessing vTODOs
+        # for each delegator:calendar
+        for delegation in get_secret("DELEGATIONS_JSON", []):
+            delegation_id = str(delegation.get("id", "")).strip()
+            calendar_name = str(delegation.get("calendar_name", "")).strip()
+            calendar_url = str(delegation.get("calendar_url", "")).strip()
+
+            if not delegation_id or not calendar_url:
+                print("8x: skipping invalid delegation config:", delegation)
+                continue
+
+            print("before get_calendar", delegation_id, flush=True)
+            calendar = client.calendar(url=calendar_url)
+            print("after get_calendar", delegation_id, flush=True)
+            print("calendar =", repr(calendar), flush=True)
+            print("calendar is None =", calendar is None, flush=True)
+
+            if calendar is None:
+                continue
+
+            old_token = load_sync_token(delegation_id)
+            print("8a:", delegation_id, "old_token =", old_token)
+
+            # creating token
             if not old_token:
-                print("8d: no old token yet, saving initial token and skipping initial send")
+                print("8d: no old token yet for", delegation_id, "- saving initial token and skipping initial send")
                 changes = calendar.get_objects(load_objects=True)
                 print("initial sync_token =", repr(getattr(changes, "sync_token", None)), flush=True)
-                save_sync_token(getattr(changes, "sync_token", None))
-                old_token = load_sync_token()
+                save_sync_token(delegation_id, getattr(changes, "sync_token", None))
+                old_token = load_sync_token(delegation_id)
                 print("reloaded token =", repr(old_token), flush=True)
 
-            # get new event objects since last sync
+            # find new/modified objects
             try:
-                print("before get_objects", flush=True)
+                print("before get_objects", delegation_id, flush=True)
                 changes = calendar.get_objects(sync_token=old_token, load_objects=True, disable_fallback=True)
-                print("after get_objects", flush=True)
+                print("after get_objects", delegation_id, flush=True)
             except Exception as e:
-                print("8x: get_objects failed for", CALENDAR_NAME, repr(e))
+                print("8x: get_objects failed for", calendar_name, repr(e))
+                continue
 
             print("changes:\n", changes)
 
-            # record new TODOs
+            # parse events
             for event in changes:
                 try:
-                    # vtodo = event.vobject_instance.vtodo
-                    vtodo = event.get_icalendar_component() # read-only
+                    vtodo = event.get_icalendar_component()
                     print(event.get_icalendar_component(), "\n")
                     print(event.get_icalendar_instance(), "\n")
                     print("vobj: ", event.get_vobject_instance(), "\n")
-                    
                     print("done print")
                 except Exception as e:
                     print("8y: skipping non-vtodo or bad vobject", repr(e))
@@ -332,17 +360,16 @@ def sync_calendar():
 
                 print("event candidate:\n", event)
 
-                # uid = getattr(vtodo.uid, "value", "") if getattr(vtodo, "UID", None) else ""
-                uid = str(vtodo.get("UID", ""))
+                uid = str(vtodo.get("UID", "")).strip()
                 print("UID: ", uid)
 
                 if not uid:
                     print("8z: skipping because missing uid")
                     continue
 
-                changed_items.append((CALENDAR_NAME, event, vtodo))
+                changed_items.append((delegation, event, vtodo))
 
-            save_sync_token(getattr(changes, "sync_token", None))
+            save_sync_token(delegation_id, getattr(changes, "sync_token", None))
 
     return changed_items
 
@@ -355,7 +382,7 @@ def main():
     print("10b: changed_items =", len(changed_items))
 
     # first refresh/update local state from any synced calendar changes
-    for calendar_name, event, vtodo in changed_items:
+    for delegation, event, vtodo in changed_items:
         event_uid = str(vtodo.get("UID", "")).strip()
         print("11: raw event_uid =", event_uid)
 
@@ -368,7 +395,7 @@ def main():
         print("12b: description =", description)
         print("12c: deadline =", deadline)
 
-        store_event(event_uid, calendar_name, event, vtodo, text)
+        store_event(event_uid, delegation, event, vtodo, text)
         
         # no longer need merge for notif IDs; event_uid now canonical uid from the start
         # final_task_key = merge_task_into_event_uid(str(event_uid), str(event_uid))

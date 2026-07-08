@@ -7,6 +7,7 @@ import asyncio
 import json
 from pathlib import Path
 import os
+import requests
 import discord # type: ignore
 from dotenv import load_dotenv # type: ignore
 from helpers import load_state, save_state, utc_now_iso, get_secret
@@ -22,8 +23,33 @@ PROCESSING_DIR = DATA_DIR / "queue" / "processing"
 DONE_DIR = DATA_DIR / "queue" / "done"
 FAILED_DIR = DATA_DIR / "queue" / "failed"
 
+VAULT_ADDR = os.getenv("VAULT_ADDR")
+VAULT_ADMIN_TOKEN = get_secret("VAULT_ADMIN_TOKEN")
+DELEGATOR_DISCORD_ID = int(get_secret("DELEGATOR_DISCORD_ID", "0") or "0")
+
 for d in [PENDING_DIR, PROCESSING_DIR, DONE_DIR, FAILED_DIR]:
     d.mkdir(parents=True, exist_ok=True)
+
+
+# vault helper functions, for updating user map slash command
+def vault_get_taskbot():
+    r = requests.get(
+        f"{VAULT_ADDR}/v1/secret/data/taskbot",
+        headers={"X-Vault-Token": VAULT_ADMIN_TOKEN},
+        timeout=20,
+    )
+    r.raise_for_status()
+    return r.json()["data"]["data"]
+
+
+def vault_put_taskbot(data: dict):
+    r = requests.post(
+        f"{VAULT_ADDR}/v1/secret/data/taskbot",
+        headers={"X-Vault-Token": VAULT_ADMIN_TOKEN},
+        json={"data": data},
+        timeout=20,
+    )
+    r.raise_for_status()
 
 
 class TaskBot(discord.Client):
@@ -31,10 +57,12 @@ class TaskBot(discord.Client):
         super().__init__(*args, **kwargs)
         self.views_registered_for_message_ids = set()
         self.bg_task = None
+        self.tree = discord.app_commands.CommandTree(self)
 
 
     # on each start (TODO: switch to on reconnect?), render all valid tasks and buttons
     async def setup_hook(self):
+        await self.tree.sync()
         await self.render_persistent_views()
         print("starting bg task")
         if self.bg_task is None or self.bg_task.done():
@@ -192,10 +220,41 @@ def build_bot():
     intents = discord.Intents.default()
     return TaskBot(intents=intents)
 
+bot = build_bot()
+
+# slash command for adding new assignees
+@bot.tree.command(name="map_add", description="Add or update a Discord user mapping")
+@discord.app_commands.describe(name="Assignment name", discord_id="Discord user ID")
+
+async def map_add(interaction: discord.Interaction, name: str, discord_id: str):
+    if interaction.user.id != DELEGATOR_DISCORD_ID:
+        await interaction.response.send_message("Not allowed.", ephemeral=True)
+        return
+    
+    cleaned_name = name.strip().lower()
+    cleaned_discord_id = discord_id.strip()
+    if not cleaned_name:
+        await interaction.response.send_message("Name cannot be empty.", ephemeral=True)
+        return
+    # TODO: change to discord username for user-friendliness
+    if not cleaned_discord_id.isdigit():
+        await interaction.response.send_message("Discord ID must be numeric.", ephemeral=True)
+        return
+
+    payload = vault_get_taskbot()
+    current = json.loads(payload.get("USER_MAP_DC", "{}"))
+    current[name.strip().lower()] = discord_id.strip()
+    payload["USER_MAP_DC"] = json.dumps(current)
+    vault_put_taskbot(payload)
+
+    await interaction.response.send_message(
+        f"Saved mapping: {name.strip().lower()} -> {discord_id.strip()}",
+        ephemeral=True,
+    )
+
 
 # persistent run
 def main():
-    bot = build_bot()
     bot.run(DISCORD_BOT_TOKEN, reconnect=True)
 
 
