@@ -43,7 +43,7 @@ REMINDER_HOURS_BEFORE = int(os.getenv("REMINDER_HOURS_BEFORE", "24"))
 REMINDER_DAYS_BEFORE = int(os.getenv("REMINDER_DAYS_BEFORE", "0"))
 REMINDER_DELTAS = json.loads(os.getenv("REMINDER_DELTAS", "[]"))
 
-DISCORD_BOT_TOKEN = get_secret("DISCORD_BOT_TOKEN")
+# DISCORD_BOT_TOKEN = get_secret("DISCORD_BOT_TOKEN")
 USER_MAP_DC = json.loads(get_secret("USER_MAP_DC", "{}"))
 USER_MAP_SIGNAL = json.loads(get_secret("USER_MAP_SIGNAL", "{}"))
 
@@ -305,7 +305,7 @@ def sync_calendar():
 
     with get_client() as client:
         # for each delegator:calendar
-        for delegation in get_secret("DELEGATIONS_JSON", []):
+        for delegation in json.loads(get_secret("DELEGATIONS_JSON", [])):
             delegation_id = str(delegation.get("id", "")).strip()
             calendar_name = str(delegation.get("calendar_name", "")).strip()
             calendar_url = str(delegation.get("calendar_url", "")).strip()
