@@ -1,4 +1,5 @@
 ## Latest Updates
+- Store secrets in Vault
 - Scale the software to support multiple delegators/calendars
 - Allow delegator(s) to add assignee name/Discord username (Discord slash command /add_user)
 
