@@ -2,7 +2,8 @@
 Polls NextCloud calendar via CalDAV sync token for newly created/modified VTODOs
 and queues Discord DMs for TaskBot 
 """
-# TODO: test reminder deltas + negative reminder deltas (for missed deadlines)
+# TODO: fix reminders: sent deltas should have all deltas currently valid appended to avoid spam
+# TODO: normalize all dates to 11:59P.M. ?
 # test: fix followup reminder spam; reminders being sent whenever a task is sent or script is run
 
 # server-side failure handling:

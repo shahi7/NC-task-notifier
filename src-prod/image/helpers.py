@@ -170,7 +170,7 @@ def notify_delegator(task_key: str, action: bool = False, deadline: bool = False
 
     message="The following task has been updated:\n" + update
     subject = state[task_key]["subject"]
-    USER_MAP_SIGNAL = get_secret("USER_MAP_SIGNAL", {})
+    USER_MAP_SIGNAL = json.loads(get_secret("USER_MAP_SIGNAL", "{}") or "{}")
 
     delegator_signal_key = str(state[task_key].get("delegator_signal_key", "")).strip()
     recipients = USER_MAP_SIGNAL.get(delegator_signal_key, [])

@@ -44,7 +44,26 @@ def user_map_path_for(delegation_id: str) -> str:
     return f"secret/data/taskbot/config/user_map_dc/{delegation_id}"
 
 
+LOCAL_DEV = os.getenv("LOCAL_DEV", "").strip() == "1" # TODO remove; for local testing
+
+# TODO remove; for local testing
+def local_user_map_file(delegation_id: str) -> Path:
+    env_name = f"USER_MAP_DC__{delegation_id}_FILE"
+    p = os.getenv(env_name, "").strip()
+    if not p:
+        raise RuntimeError(f"{env_name} is not set")
+    return Path(p)
+
+
 def vault_get_user_map_dc(delegation_id: str) -> dict:
+    # TODO remove; for local testing
+    if LOCAL_DEV:
+        path = local_user_map_file(delegation_id)
+        print("\n\nPATH: ", path)
+        if not path.exists():
+            return {}
+        return json.loads(path.read_text(encoding="utf-8") or "{}")
+
     r = requests.get(
         f"{VAULT_ADDR}/v1/{user_map_path_for(delegation_id)}",
         headers={"X-Vault-Token": VAULT_BOT_TOKEN},
@@ -58,6 +77,13 @@ def vault_get_user_map_dc(delegation_id: str) -> dict:
 
 
 def vault_put_user_map_dc(delegation_id: str, user_map: dict) -> None:
+    # TODO remove; for local testing
+    if LOCAL_DEV:
+        path = local_user_map_file(delegation_id)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps(user_map, indent=2), encoding="utf-8")
+        return
+
     r = requests.post(
         f"{VAULT_ADDR}/v1/{user_map_path_for(delegation_id)}",
         headers={"X-Vault-Token": VAULT_BOT_TOKEN},
@@ -67,6 +93,7 @@ def vault_put_user_map_dc(delegation_id: str, user_map: dict) -> None:
     r.raise_for_status()
 
 
+# main bot class; renders view + sends DMs
 class TaskBot(discord.Client):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -238,13 +265,13 @@ def build_bot():
 bot = build_bot()
 
 # slash command for adding new assignees
-@bot.tree.command(name="map_add", description="Add or update a Discord user mapping")
+@bot.tree.command(name="add_user", description="Add or update a Name -> Discord user mapping")
 @discord.app_commands.describe(
     name="Assignee name",
     user="Discord username of new assignee",
     delegation_id="Delegation to update (optional; only needed if you manage multiple)",
 )
-async def map_add(
+async def add_user(
     interaction: discord.Interaction,
     name: str,
     user: discord.User,
