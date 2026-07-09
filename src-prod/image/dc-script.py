@@ -263,7 +263,8 @@ def store_event(task_key: str, delegation: dict, event, vtodo, text: str):
     state[task_key].setdefault("sent_reminder_deltas", [])
 
     # in case user map updated via slash command
-    user_map_dc = delegation.get("user_map_dc", {}) or {}
+    delegation_id = str(delegation.get("id", "")).strip()
+    user_map_dc = json.loads(get_secret(f"USER_MAP_DC__{delegation_id}", "{}"))
     assignees = []
     # storing delegator and assignee discord/signal id
     if vtodo.get("CATEGORIES", []):
@@ -305,7 +306,7 @@ def sync_calendar():
 
     with get_client() as client:
         # for each delegator:calendar
-        for delegation in json.loads(get_secret("DELEGATIONS_JSON", [])):
+        for delegation in json.loads(get_secret("DELEGATIONS_JSON", "[]")):
             delegation_id = str(delegation.get("id", "")).strip()
             calendar_name = str(delegation.get("calendar_name", "")).strip()
             calendar_url = str(delegation.get("calendar_url", "")).strip()

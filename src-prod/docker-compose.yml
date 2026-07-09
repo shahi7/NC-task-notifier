@@ -1,5 +1,5 @@
 services:
-  # local vault testing
+  # local vault testing; remove
   vault:
     image: hashicorp/vault:1.18
     container_name: nc-vault
@@ -17,10 +17,11 @@ services:
     image: hashicorp/vault:1.18
     container_name: nc-vault-agent
     command: vault agent -config=/vault-agent/agent.hcl
+    cap_add: [IPC_LOCK] # suppress warning
     environment:
-      VAULT_ADDR: http://vault:8200 # local
-    user: "0:0"
-    depends_on: # local
+      VAULT_ADDR: http://vault:8200 # local; fine for server vers
+    user: "0:0" # local; remove
+    depends_on: # local; remove
       - vault
     volumes:
       - ./vault-agent:/vault-agent:ro
@@ -52,10 +53,10 @@ services:
       NEXTCLOUD_USER_FILE: /run/secrets/nextcloud_user
       NEXTCLOUD_PASS_FILE: /run/secrets/nextcloud_pass
       SIGNAL_SENDER_FILE: /run/secrets/signal_sender
-      USER_MAP_DC_FILE: /run/secrets/user_map_dc
-      USER_MAP_SIGNAL_FILE: /run/secrets/user_map_signal
-      DELEGATOR_DISCORD_ID_FILE: /run/secrets/delegator_discord_id
-      VAULT_ADMIN_TOKEN_FILE: /run/secrets/vault_admin_token
+      # USER_MAP_DC_FILE: /run/secrets/user_map_dc
+      # USER_MAP_SIGNAL_FILE: /run/secrets/user_map_signal
+      # DELEGATOR_DISCORD_ID_FILE: /run/secrets/delegator_discord_id
+      VAULT_BOT_TOKEN_FILE: /run/secrets/vault_admin_token
       DELEGATIONS_JSON_FILE: /run/secrets/delegations_json
     depends_on:
       - vault-agent
@@ -77,9 +78,9 @@ services:
       NEXTCLOUD_USER_FILE: /run/secrets/nextcloud_user
       NEXTCLOUD_PASS_FILE: /run/secrets/nextcloud_pass
       SIGNAL_SENDER_FILE: /run/secrets/signal_sender
-      USER_MAP_DC_FILE: /run/secrets/user_map_dc
-      USER_MAP_SIGNAL_FILE: /run/secrets/user_map_signal
-      DELEGATOR_DISCORD_ID_FILE: /run/secrets/delegator_discord_id
+      # USER_MAP_DC_FILE: /run/secrets/user_map_dc
+      # USER_MAP_SIGNAL_FILE: /run/secrets/user_map_signal
+      # DELEGATOR_DISCORD_ID_FILE: /run/secrets/delegator_discord_id
       DELEGATIONS_JSON_FILE: /run/secrets/delegations_json
     depends_on:
       - vault-agent

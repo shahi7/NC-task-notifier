@@ -61,8 +61,8 @@ template {
 }
 
 template {
-  source      = "/vault-agent/templates/vault_admin_token.ctmpl"
-  destination = "/shared-secrets/vault_admin_token"
+  source      = "/vault-agent/templates/vault_bot_token.ctmpl"
+  destination = "/shared-secrets/vault_bot_token"
 }
 
 template {

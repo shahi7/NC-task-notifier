@@ -1,1 +1,1 @@
-{{ with secret "secret/data/taskbot" }}{{ .Data.data.DELEGATOR_DISCORD_ID }}{{ end }}
+{{ with secret "secret/data/taskbot/config/user_map_dc" }}{{ .Data.data.DELEGATOR_DISCORD_ID }}{{ end }}

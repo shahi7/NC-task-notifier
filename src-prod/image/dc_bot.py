@@ -2,7 +2,7 @@
 Persistent Discord bot for polling notification queue (updated by dc_script), sending DMs,
 and dynamically updating UI 
 """
-#!/usr/bin/env python3 
+#!/usr/bin/env python3
 import asyncio
 import json
 from pathlib import Path
@@ -23,30 +23,45 @@ PROCESSING_DIR = DATA_DIR / "queue" / "processing"
 DONE_DIR = DATA_DIR / "queue" / "done"
 FAILED_DIR = DATA_DIR / "queue" / "failed"
 
-VAULT_ADDR = os.getenv("VAULT_ADDR")
-VAULT_ADMIN_TOKEN = get_secret("VAULT_ADMIN_TOKEN")
-DELEGATOR_DISCORD_ID = int(get_secret("DELEGATOR_DISCORD_ID", "0") or "0")
-
 for d in [PENDING_DIR, PROCESSING_DIR, DONE_DIR, FAILED_DIR]:
     d.mkdir(parents=True, exist_ok=True)
 
-
 # vault helper functions, for updating user map slash command
-def vault_get_taskbot():
+VAULT_ADDR = os.getenv("VAULT_ADDR")
+VAULT_BOT_TOKEN = get_secret("VAULT_BOT_TOKEN")  # new, narrow token
+
+DELEGATIONS = json.loads(get_secret("DELEGATIONS_JSON", "[]"))
+
+# multi-delegation helpers; one DC user map per delegator
+def get_delegations_for_user(discord_user_id: int) -> list[dict]:
+    return [
+        d for d in DELEGATIONS
+        if str(d.get("delegator_discord_id", "")).strip() == str(discord_user_id)
+    ]
+
+
+def user_map_path_for(delegation_id: str) -> str:
+    return f"secret/data/taskbot/config/user_map_dc/{delegation_id}"
+
+
+def vault_get_user_map_dc(delegation_id: str) -> dict:
     r = requests.get(
-        f"{VAULT_ADDR}/v1/secret/data/taskbot",
-        headers={"X-Vault-Token": VAULT_ADMIN_TOKEN},
+        f"{VAULT_ADDR}/v1/{user_map_path_for(delegation_id)}",
+        headers={"X-Vault-Token": VAULT_BOT_TOKEN},
         timeout=20,
     )
+    if r.status_code == 404:
+        return {}
     r.raise_for_status()
-    return r.json()["data"]["data"]
+    raw = r.json()["data"]["data"].get("value", "{}")
+    return json.loads(raw)
 
 
-def vault_put_taskbot(data: dict):
+def vault_put_user_map_dc(delegation_id: str, user_map: dict) -> None:
     r = requests.post(
-        f"{VAULT_ADDR}/v1/secret/data/taskbot",
-        headers={"X-Vault-Token": VAULT_ADMIN_TOKEN},
-        json={"data": data},
+        f"{VAULT_ADDR}/v1/{user_map_path_for(delegation_id)}",
+        headers={"X-Vault-Token": VAULT_BOT_TOKEN},
+        json={"data": {"value": json.dumps(user_map)}},
         timeout=20,
     )
     r.raise_for_status()
@@ -224,31 +239,33 @@ bot = build_bot()
 
 # slash command for adding new assignees
 @bot.tree.command(name="map_add", description="Add or update a Discord user mapping")
-@discord.app_commands.describe(name="Assignment name", discord_id="Discord user ID")
-
-async def map_add(interaction: discord.Interaction, name: str, discord_id: str):
-    if interaction.user.id != DELEGATOR_DISCORD_ID:
-        await interaction.response.send_message("Not allowed.", ephemeral=True)
+@discord.app_commands.describe(
+    delegation_id="Delegation to update",
+    name="Assignment name",
+    discord_id="Discord user ID",
+)
+async def map_add(interaction: discord.Interaction, delegation_id: str, name: str, discord_id: str):
+    allowed = get_delegations_for_user(interaction.user.id)
+    if not any(d.get("id") == delegation_id for d in allowed):
+        await interaction.response.send_message("Not allowed for that delegation.", ephemeral=True)
         return
-    
+
     cleaned_name = name.strip().lower()
     cleaned_discord_id = discord_id.strip()
+
     if not cleaned_name:
         await interaction.response.send_message("Name cannot be empty.", ephemeral=True)
         return
-    # TODO: change to discord username for user-friendliness
     if not cleaned_discord_id.isdigit():
         await interaction.response.send_message("Discord ID must be numeric.", ephemeral=True)
         return
 
-    payload = vault_get_taskbot()
-    current = json.loads(payload.get("USER_MAP_DC", "{}"))
-    current[name.strip().lower()] = discord_id.strip()
-    payload["USER_MAP_DC"] = json.dumps(current)
-    vault_put_taskbot(payload)
+    current = vault_get_user_map_dc(delegation_id)
+    current[cleaned_name] = cleaned_discord_id
+    vault_put_user_map_dc(delegation_id, current)
 
     await interaction.response.send_message(
-        f"Saved mapping: {name.strip().lower()} -> {discord_id.strip()}",
+        f"Saved mapping: {cleaned_name} -> {cleaned_discord_id}",
         ephemeral=True,
     )
 
