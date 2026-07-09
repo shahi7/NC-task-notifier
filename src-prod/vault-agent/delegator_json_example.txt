@@ -1,4 +1,4 @@
-# server-side confid to set up delegator:calendar info
+# server-side config to set up delegator:calendar info
 [
   {
     "id": "alice-main",

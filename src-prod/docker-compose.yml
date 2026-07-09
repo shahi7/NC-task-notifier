@@ -33,8 +33,6 @@ services:
     container_name: nc-signal-api
     environment:
       MODE: "native"
-    ports:
-      - "8080:8080"
     volumes:
       - ./signal-data:/home/.local/share/signal-cli
     restart: unless-stopped
