@@ -24,7 +24,7 @@ class TaskStatusView(discord.ui.View):
         status = normalize_status(status)
 
         # rendering labels + buttons based on current status of task
-        if status in ("pending", "cancelled"):
+        if status == "pending":
             self.add_item(
                 TaskButton(
                     task_key, "working", "Accept Task", discord.ButtonStyle.primary
@@ -49,12 +49,12 @@ class TaskStatusView(discord.ui.View):
                 )
             )
             self.add_item(ChangeDeadlineButton(task_key))
-        elif status == "done":
+        elif status in ("done", "cancelled"):
             self.add_item(
                 TaskButton(
                     task_key,
                     "done",
-                    "Completed! Click to undo",
+                    "Undo ↺",
                     discord.ButtonStyle.secondary,
                 )
             )
@@ -83,14 +83,16 @@ class TaskButton(discord.ui.Button):
         current = normalize_status(task.get("status", "pending"))
 
         # updating status
-        if action == "working":
-            if current in ("pending", "cancelled"):
+        if action == "working": # working = first button
+            if current == "pending":
                 new_status = "working"
             else:
                 new_status = "cancelled"
-        else:  # done
+        else:  # done = second button OR reset button
             if current == "done":
                 new_status = "working"
+            elif current == "cancelled":
+                new_status = "pending"
             else:
                 new_status = "done"
         print(f"new status: {new_status}\n")
