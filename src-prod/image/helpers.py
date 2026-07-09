@@ -20,6 +20,10 @@ CACHE_KEEP_DAYS = 3
 TODAY = datetime.now(timezone.utc).date().isoformat()
 CACHE_FILE = CACHE_DIR / f"sent_notifications_{TODAY}.json"
 
+REMINDER_HOURS_BEFORE = int(os.getenv("REMINDER_HOURS_BEFORE", "24"))
+REMINDER_DAYS_BEFORE = int(os.getenv("REMINDER_DAYS_BEFORE", "0"))
+REMINDER_DELTAS = json.loads(os.getenv("REMINDER_DELTAS", "[]"))
+
 
 def get_secret(name: str, default: str | None = None) -> str | None:
     # local testing without vault
@@ -310,4 +314,53 @@ def build_task_text(task: dict) -> str:
     return "\n".join(parts)
 
 
+def parse_deadline_value(value):
+    if value is None:
+        return None
 
+    if isinstance(value, datetime):
+        dt = value
+    else:
+        text = str(value).strip()
+        if not text:
+            return None
+        try:
+            dt = datetime.fromisoformat(text.replace("Z", "+00:00"))
+        except Exception:
+            return None
+
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+
+    return dt
+
+
+def get_reminder_deltas():
+    if REMINDER_DELTAS:
+        return [timedelta(days=d, hours=h) for d, h in REMINDER_DELTAS]
+    return [timedelta(days=REMINDER_DAYS_BEFORE, hours=REMINDER_HOURS_BEFORE)]
+
+
+def normalize_deadline(value):
+    if value is None:
+        return ""
+    if isinstance(value, datetime):
+        return value.date().isoformat()
+    return str(value).strip().split("T")[0]
+
+
+# add multiple deltas to sent_deltas; for when task is due soon after creation, to avoid spam
+def mark_due_reminder_deltas(task: dict, now: datetime, reminder_deltas: list[timedelta]):
+    deadline = parse_deadline_value(task.get("deadline"))
+    if not deadline:
+        return
+
+    sent = set(task.get("sent_reminder_deltas", []))
+
+    for delta in sorted(reminder_deltas, reverse=True):
+        if delta < timedelta(0):
+            continue
+        if now >= deadline - delta:
+            sent.add(str(delta))
+
+    task["sent_reminder_deltas"] = sorted(sent)

@@ -25,9 +25,13 @@ from helpers import (
     get_client,
     load_state,
     normalize_status,
+    parse_deadline_value,
     save_state,
     utc_now_iso,
-    get_secret
+    get_secret,
+    normalize_deadline,
+    get_reminder_deltas,
+    mark_due_reminder_deltas
 )
 
 DATA_DIR = Path(os.getenv("DATA_DIR", "/app/data"))
@@ -40,10 +44,6 @@ print("1: script started", flush=True)
 
 # use env vars
 load_dotenv(Path(__file__).resolve().parent / ".env")
-
-REMINDER_HOURS_BEFORE = int(os.getenv("REMINDER_HOURS_BEFORE", "24"))
-REMINDER_DAYS_BEFORE = int(os.getenv("REMINDER_DAYS_BEFORE", "0"))
-REMINDER_DELTAS = json.loads(os.getenv("REMINDER_DELTAS", "[]"))
 
 # DISCORD_BOT_TOKEN = get_secret("DISCORD_BOT_TOKEN")
 USER_MAP_DC = json.loads(get_secret("USER_MAP_DC", "{}"))
@@ -70,41 +70,6 @@ def load_sync_token(delegation_id: str):
 def save_sync_token(delegation_id: str, token):
     if token:
         sync_token_path(delegation_id).write_text(token)
-
-
-def parse_deadline_value(value):
-    if value is None:
-        return None
-
-    if isinstance(value, datetime):
-        dt = value
-    else:
-        text = str(value).strip()
-        if not text:
-            return None
-        try:
-            dt = datetime.fromisoformat(text.replace("Z", "+00:00"))
-        except Exception:
-            return None
-
-    if dt.tzinfo is None:
-        dt = dt.replace(tzinfo=timezone.utc)
-
-    return dt
-
-
-def get_reminder_deltas():
-    if REMINDER_DELTAS:
-        return [timedelta(days=d, hours=h) for d, h in REMINDER_DELTAS]
-    return [timedelta(days=REMINDER_DAYS_BEFORE, hours=REMINDER_HOURS_BEFORE)]
-
-
-def normalize_deadline(value):
-    if value is None:
-        return ""
-    if isinstance(value, datetime):
-        return value.date().isoformat()
-    return str(value).strip().split("T")[0]
 
 
 # checks if it is time to send a reminder (check deltas or if task is new)
@@ -441,6 +406,9 @@ def main():
         if due in ("new", "assignee_change"):
             job_type = "send_task_dm"
             new_state[task_key]["new"] = False
+            new_state[task_key].setdefault("sent_reminder_deltas", [])
+            # add multiple valid sent deltas at once if item due soon after creation 
+            mark_due_reminder_deltas(new_state[task_key], now, reminder_deltas)
         # update notif; don't touch routine reminder state/logic
         elif due == "updated":
             print("ITEM UPDATE!\n")
