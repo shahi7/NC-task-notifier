@@ -56,3 +56,4 @@ vault/secret_id
 src-prod/vault-agent/role_id
 src-prod/vault-agent/secret_id
 src-prod/taskbot-policy.hcl
+src-prod/test/user_map_dc__test.txt

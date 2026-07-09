@@ -31,6 +31,7 @@ from helpers import (
 
 DATA_DIR = Path(os.getenv("DATA_DIR", "/app/data"))
 QUEUE_DIR = DATA_DIR / "queue" / "pending"
+QUEUE_DIR.mkdir(parents=True, exist_ok=True)
 SYNC_TOKEN_DIR = DATA_DIR / "sync_tokens"
 SYNC_TOKEN_DIR.mkdir(parents=True, exist_ok=True)
 
@@ -265,6 +266,7 @@ def store_event(task_key: str, delegation: dict, event, vtodo, text: str):
     # in case user map updated via slash command
     delegation_id = str(delegation.get("id", "")).strip()
     user_map_dc = json.loads(get_secret(f"USER_MAP_DC__{delegation_id}", "{}"))
+    print("user map:", user_map_dc)
     assignees = []
     # storing delegator and assignee discord/signal id
     if vtodo.get("CATEGORIES", []):

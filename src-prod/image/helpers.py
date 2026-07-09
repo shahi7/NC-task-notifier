@@ -23,7 +23,20 @@ CACHE_FILE = CACHE_DIR / f"sent_notifications_{TODAY}.json"
 
 def get_secret(name: str, default: str | None = None) -> str | None:
     # local testing without vault
-    return os.getenv(f"{name}", default)
+
+    # if secret stored in vault with _FILE pattern
+    file_path = os.getenv(f"{name}_FILE", "").strip()
+    if file_path:
+        p = Path(file_path)
+        if p.exists():
+            return p.read_text(encoding="utf-8").strip()
+
+    # otherwise, non-secret value stored in .env file
+    value = os.getenv(name)
+    if value is not None:
+        return value
+
+    return default
 
     # prod vers; with vault
     # file_var = os.getenv(f"{name}_FILE")
@@ -146,7 +159,7 @@ def save_state(state):
 def notify_delegator(task_key: str, action: bool = False, deadline: bool = False):
     message, payload, subject = "", "", ""
     state = load_state()
-    
+
     update = ""
     # status update
     if action:
@@ -179,6 +192,8 @@ def notify_delegator(task_key: str, action: bool = False, deadline: bool = False
 
 
 def get_client():
+    print(NEXTCLOUD_BASE_URL)
+    print(NEXTCLOUD_PASS)
     try:
         client = DAVClient( # pylint: disable=not-callable
             url=NEXTCLOUD_BASE_URL + "/remote.php/dav",
