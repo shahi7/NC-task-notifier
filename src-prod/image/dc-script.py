@@ -1,15 +1,14 @@
 """
 Polls NextCloud calendar via CalDAV sync token for newly created/modified VTODOs
-and queues Discord DMs for TaskBot 
+and queues Discord DMs for TaskBot
 """
-# TODO: fix reminders: sent deltas should have all deltas currently valid appended to avoid spam
-# TODO: normalize all dates to 11:59P.M. ?
+# normalize all dates to 11:59P.M. ?
 # test: fix followup reminder spam; reminders being sent whenever a task is sent or script is run
 
 # server-side failure handling:
 # script fails to fetch events from sync token -> cron reschedules script -> eventual success
 # bot fails to send dm/sync an update to NC -> update goes into processing queue to be retried
-        # IMPORTANT: increase sleep times between enqueues to avoid performance overload
+# IMPORTANT: increase sleep times between enqueues to avoid performance overload
 
 #!/usr/bin/env python3
 from datetime import datetime, timedelta, timezone
@@ -17,7 +16,7 @@ import os
 from pathlib import Path
 import uuid
 import json
-from dotenv import load_dotenv # type: ignore
+from dotenv import load_dotenv  # type: ignore
 from helpers import (
     build_task_text,
     cleanup_old_cache_files,
@@ -31,7 +30,7 @@ from helpers import (
     get_secret,
     normalize_deadline,
     get_reminder_deltas,
-    mark_due_reminder_deltas
+    mark_due_reminder_deltas,
 )
 
 DATA_DIR = Path(os.getenv("DATA_DIR", "/app/data"))
@@ -95,27 +94,33 @@ def should_send_reminder(task: dict, now: datetime, reminder_deltas: list[timede
     for delta in sorted(reminder_deltas, reverse=True):
         # if deadline hasn't passed
         if delta >= timedelta(0):
-                reminder_time = deadline - delta
-                delta_key = str(delta)
-                print("delta key:", delta_key)
-                if now >= reminder_time and delta_key not in sent_deltas:
-                        return delta_key
+            reminder_time = deadline - delta
+            delta_key = str(delta)
+            print("delta key:", delta_key)
+            if now >= reminder_time and delta_key not in sent_deltas:
+                return delta_key
         # if deadline has passed and task is incomplete, send 1 daily reminder
         else:
-                overdue_start = deadline + abs(delta)
-                if now < overdue_start:
-                        continue
+            overdue_start = deadline + abs(delta)
+            if now < overdue_start:
+                continue
 
-                overdue_days = (now.date() - overdue_start.date()).days + 1
-                delta_key = f"overdue:{abs(delta).days}:{overdue_days}"
-                if delta_key not in sent_deltas:
-                        return delta_key
+            overdue_days = (now.date() - overdue_start.date()).days + 1
+            delta_key = f"overdue:{abs(delta).days}:{overdue_days}"
+            if delta_key not in sent_deltas:
+                return delta_key
 
     return None
 
 
 # handoff layer for persistent TaskBot
-def enqueue_discord_dm(text: str, discord_user_id: int, task_key: str, job_type: str = "send_task_dm", updated: dict = None):
+def enqueue_discord_dm(
+    text: str,
+    discord_user_id: int,
+    task_key: str,
+    job_type: str = "send_task_dm",
+    updated: dict = None,
+):
     if not updated:
         updated = {}
     job = {
@@ -124,7 +129,7 @@ def enqueue_discord_dm(text: str, discord_user_id: int, task_key: str, job_type:
         "text": text,
         "task_key": task_key,
         "created_at": datetime.now(timezone.utc).isoformat(),
-        "updated": updated
+        "updated": updated,
     }
 
     tmp_path = QUEUE_DIR / f"{uuid.uuid4()}.tmp"
@@ -137,7 +142,9 @@ def enqueue_discord_dm(text: str, discord_user_id: int, task_key: str, job_type:
 def parse_vtodo(vtodo):
     print("vtodo:\n", vtodo)
     subject = str(vtodo.get("SUMMARY", "")).strip() or "Nextcloud event"
-    description = str(vtodo.get("DESCRIPTION", "")).strip() if vtodo.get("DESCRIPTION") else ""
+    description = (
+        str(vtodo.get("DESCRIPTION", "")).strip() if vtodo.get("DESCRIPTION") else ""
+    )
     location = str(vtodo.get("LOCATION", "")).strip()
 
     try:
@@ -145,7 +152,9 @@ def parse_vtodo(vtodo):
     except Exception:
         due = vtodo.get("DUE")
 
-    deadline_text = due.date().isoformat() if isinstance(due, datetime) else str(due or "")
+    deadline_text = (
+        due.date().isoformat() if isinstance(due, datetime) else str(due or "")
+    )
 
     parts = [subject]
     if description:
@@ -185,40 +194,61 @@ def store_event(task_key: str, delegation: dict, event, vtodo, text: str):
         print("current: ", current)
         if stored and current != stored:
             state[task_key]["updated"]["deadline"] = True
-        
+
         for field in ["LOCATION", "STATUS", "SUBJECT", "DESCRIPTION"]:
-                actual = "SUMMARY" if field == "SUBJECT" else field
-                field = field.lower()
+            actual = "SUMMARY" if field == "SUBJECT" else field
+            field = field.lower()
 
-                if field == "STATUS":
-                        current_value = normalize_status(vtodo.get(actual))
-                        stored_value = normalize_status(state[task_key].get("status", ""))
-                else:
-                        current_value = str(vtodo.get(actual, "") or "").strip()
-                        stored_value = str(state[task_key].get(f"{field}", "")).strip()
+            if field == "STATUS":
+                current_value = normalize_status(vtodo.get(actual))
+                stored_value = normalize_status(state[task_key].get("status", ""))
+            else:
+                current_value = str(vtodo.get(actual, "") or "").strip()
+                stored_value = str(state[task_key].get(f"{field}", "")).strip()
 
-                if stored_value and current_value != stored_value:
-                        print("changed:", field, "stored=", stored_value, "current=", current_value)
-                        state[task_key]["updated"][field] = True
+            if stored_value and current_value != stored_value:
+                print(
+                    "changed:",
+                    field,
+                    "stored=",
+                    stored_value,
+                    "current=",
+                    current_value,
+                )
+                state[task_key]["updated"][field] = True
 
     due = vtodo.decoded("DUE").isoformat() if vtodo.get("DUE") else None
 
-    # allowing multiple delegators and calendars 
+    # allowing multiple delegators and calendars
     state[task_key]["delegation_id"] = str(delegation.get("id", "")).strip()
-    state[task_key]["calendar_name"] = str(delegation.get("calendar_name", "")).strip().lower()
+    state[task_key]["calendar_name"] = (
+        str(delegation.get("calendar_name", "")).strip().lower()
+    )
     state[task_key]["calendar_url"] = str(delegation.get("calendar_url", "")).strip()
-    state[task_key]["delegator_discord_id"] = str(delegation.get("delegator_discord_id", "")).strip()
-    state[task_key]["delegator_signal_key"] = str(delegation.get("delegator_signal_key", "")).strip()
+    state[task_key]["delegator_discord_id"] = str(
+        delegation.get("delegator_discord_id", "")
+    ).strip()
+    state[task_key]["delegator_signal_key"] = str(
+        delegation.get("delegator_signal_key", "")
+    ).strip()
 
-    state[task_key]["status"] = str(vtodo.get("STATUS", "")).strip() if vtodo.get("STATUS") else "pending"
+    state[task_key]["status"] = (
+        str(vtodo.get("STATUS", "")).strip() if vtodo.get("STATUS") else "pending"
+    )
     state[task_key]["object_type"] = "caldav_event"
     state[task_key]["object_id"] = str(vtodo.get("UID", "")).strip()
     state[task_key]["event_uid"] = str(vtodo.get("UID", "")).strip()
     state[task_key]["event_url"] = str(getattr(event, "url", ""))
-    state[task_key]["deadline"] = due.isoformat() if hasattr(due, "isoformat") else str(due or "")
-    state[task_key]["location"] = str(vtodo.get("LOCATION", "")).strip() if vtodo.get("LOCATION") else ""
+    state[task_key]["deadline"] = (
+        due.isoformat() if hasattr(due, "isoformat") else str(due or "")
+    )
+    state[task_key]["location"] = (
+        str(vtodo.get("LOCATION", "")).strip() if vtodo.get("LOCATION") else ""
+    )
     state[task_key]["subject"] = str(vtodo.get("SUMMARY", "")).strip()
-    state[task_key]["description"] = str(vtodo.get("DESCRIPTION", "")).strip() if vtodo.get("DESCRIPTION") else ""
+    state[task_key]["description"] = (
+        str(vtodo.get("DESCRIPTION", "")).strip() if vtodo.get("DESCRIPTION") else ""
+    )
     state[task_key]["notification_id"] = task_key
     state[task_key]["text"] = text
     state[task_key]["notification_datetime"] = datetime.now(timezone.utc).isoformat()
@@ -245,21 +275,21 @@ def store_event(task_key: str, delegation: dict, event, vtodo, text: str):
 
     if old_assignees != assignees:
         # if assignees:
-            added = list(set(assignees) - set(old_assignees))
-            removed = list(set(old_assignees) - set(assignees))
-            if added:
-                state[task_key]["added_assignees"] = added
-                for a in added:
-                    state[task_key]["assignees"].append(a)
-            if removed:
-                state[task_key]["removed_assignees"] = removed
-                # looping to preserve existing message_ids
-                for a in removed:
-                    state[task_key]["assignees"].remove(a)
+        added = list(set(assignees) - set(old_assignees))
+        removed = list(set(old_assignees) - set(assignees))
+        if added:
+            state[task_key]["added_assignees"] = added
+            for a in added:
+                state[task_key]["assignees"].append(a)
+        if removed:
+            state[task_key]["removed_assignees"] = removed
+            # looping to preserve existing message_ids
+            for a in removed:
+                state[task_key]["assignees"].remove(a)
     # brand new task; redundant?
-    if not old_assignees: 
+    if not old_assignees:
         state[task_key]["assignees"] = list(assignees)
-        
+
     save_state(state)
 
     print("12x: object_type =", state[task_key]["object_type"])
@@ -297,9 +327,17 @@ def sync_calendar():
 
             # creating token
             if not old_token:
-                print("8d: no old token yet for", delegation_id, "- saving initial token and skipping initial send")
+                print(
+                    "8d: no old token yet for",
+                    delegation_id,
+                    "- saving initial token and skipping initial send",
+                )
                 changes = calendar.get_objects(load_objects=True)
-                print("initial sync_token =", repr(getattr(changes, "sync_token", None)), flush=True)
+                print(
+                    "initial sync_token =",
+                    repr(getattr(changes, "sync_token", None)),
+                    flush=True,
+                )
                 save_sync_token(delegation_id, getattr(changes, "sync_token", None))
                 old_token = load_sync_token(delegation_id)
                 print("reloaded token =", repr(old_token), flush=True)
@@ -307,7 +345,9 @@ def sync_calendar():
             # find new/modified objects
             try:
                 print("before get_objects", delegation_id, flush=True)
-                changes = calendar.get_objects(sync_token=old_token, load_objects=True, disable_fallback=True)
+                changes = calendar.get_objects(
+                    sync_token=old_token, load_objects=True, disable_fallback=True
+                )
                 print("after get_objects", delegation_id, flush=True)
             except Exception as e:
                 print("8x: get_objects failed for", calendar_name, repr(e))
@@ -365,7 +405,7 @@ def main():
         print("12c: deadline =", deadline)
 
         store_event(event_uid, delegation, event, vtodo, text)
-        
+
         # no longer need merge for notif IDs; event_uid now canonical uid from the start
         # final_task_key = merge_task_into_event_uid(str(event_uid), str(event_uid))
         print("12d: synced event into state =", event_uid)
@@ -396,7 +436,7 @@ def main():
         if not due:
             print("13d: reminder not due for", task_key)
             continue
-        
+
         base_text = build_task_text(task)
         text = base_text
 
@@ -407,7 +447,7 @@ def main():
             job_type = "send_task_dm"
             new_state[task_key]["new"] = False
             new_state[task_key].setdefault("sent_reminder_deltas", [])
-            # add multiple valid sent deltas at once if item due soon after creation 
+            # add multiple valid sent deltas at once if item due soon after creation
             mark_due_reminder_deltas(new_state[task_key], now, reminder_deltas)
         # update notif; don't touch routine reminder state/logic
         elif due == "updated":
@@ -421,7 +461,8 @@ def main():
                 if task["updated"].get(field, False):
                     if task[field] == "pending":
                         continue
-                    update_text += f"New {field}: {task[field].split('T')[0] if field == 'deadline' else task[field]}.\n"
+                    update_text += f"New {field}: {task[field].split('T')[0] \
+                                if field == 'deadline' else task[field]}.\n"
                     new_state[task_key]["updated"][field] = False
             if update_text:
                 text = "This task has been updated.\n" + update_text + "\n"
@@ -448,11 +489,19 @@ def main():
 
             # notify of removal from task
             if removed and discord_id in removed:
-                user_text = "You have been removed from the following task:\n" + base_text
+                user_text = (
+                    "You have been removed from the following task:\n" + base_text
+                )
                 user_job_type = "send_task_followup_dm"
                 if discord_id in new_state[task_key].get("removed_assignees", []):
                     new_state[task_key]["removed_assignees"].remove(discord_id)
-                enqueue_discord_dm(user_text, discord_id, task_key, user_job_type, task.get("updated", {}))
+                enqueue_discord_dm(
+                    user_text,
+                    discord_id,
+                    task_key,
+                    user_job_type,
+                    task.get("updated", {}),
+                )
                 continue
 
             if added and discord_id in added:
@@ -460,10 +509,18 @@ def main():
                 if discord_id in new_state[task_key].get("added_assignees", []):
                     new_state[task_key]["added_assignees"].remove(discord_id)
                 # new assignee should get canonical message with interactions
-                enqueue_discord_dm(user_text, discord_id, task_key, "send_task_dm", task.get("updated", {}))
+                enqueue_discord_dm(
+                    user_text,
+                    discord_id,
+                    task_key,
+                    "send_task_dm",
+                    task.get("updated", {}),
+                )
                 continue
 
-            enqueue_discord_dm(user_text, discord_id, task_key, user_job_type, task.get("updated", {}))
+            enqueue_discord_dm(
+                user_text, discord_id, task_key, user_job_type, task.get("updated", {})
+            )
 
         new_state[task_key]["added_assignees"] = []
         new_state[task_key]["removed_assignees"] = []

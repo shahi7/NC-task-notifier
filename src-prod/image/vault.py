@@ -9,9 +9,10 @@ from helpers import get_secret
 # vault helper functions, for updating user map slash command
 VAULT_ADDR = os.getenv("VAULT_ADDR")
 VAULT_BOT_TOKEN = get_secret("VAULT_BOT_TOKEN")  # new, narrow token
-LOCAL_DEV = os.getenv("LOCAL_DEV", "").strip() == "1" # TODO remove; for local testing
+LOCAL_DEV = os.getenv("LOCAL_DEV", "").strip() == "1"  # remove; for local testing
 
-# TODO remove; for local testing
+
+# remove; for local testing
 def local_user_map_file(delegation_id: str) -> Path:
     env_name = f"USER_MAP_DC__{delegation_id}_FILE"
     p = os.getenv(env_name, "").strip()
@@ -21,7 +22,7 @@ def local_user_map_file(delegation_id: str) -> Path:
 
 
 def vault_get_user_map_dc(delegation_id: str) -> dict:
-    # TODO remove; for local testing
+    # remove; for local testing
     if LOCAL_DEV:
         path = local_user_map_file(delegation_id)
         print("\n\nPATH: ", path)
@@ -42,7 +43,7 @@ def vault_get_user_map_dc(delegation_id: str) -> dict:
 
 
 def vault_put_user_map_dc(delegation_id: str, user_map: dict) -> None:
-    # TODO remove; for local testing
+    # remove; for local testing
     if LOCAL_DEV:
         path = local_user_map_file(delegation_id)
         path.parent.mkdir(parents=True, exist_ok=True)
@@ -61,9 +62,11 @@ def vault_put_user_map_dc(delegation_id: str, user_map: dict) -> None:
 # multi-delegation helpers; one DC user map per delegator
 DELEGATIONS = json.loads(get_secret("DELEGATIONS_JSON", "[]"))
 
+
 def get_delegations_for_user(discord_user_id: int) -> list[dict]:
     return [
-        d for d in DELEGATIONS
+        d
+        for d in DELEGATIONS
         if str(d.get("delegator_discord_id", "")).strip() == str(discord_user_id)
     ]
 

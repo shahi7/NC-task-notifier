@@ -6,9 +6,9 @@ from datetime import datetime, timezone, timedelta
 import os
 from pathlib import Path
 import json
-from caldav import DAVClient # type: ignore
-import requests # type: ignore
-from dotenv import load_dotenv # type: ignore
+from caldav import DAVClient  # type: ignore
+import requests  # type: ignore
+from dotenv import load_dotenv  # type: ignore
 
 load_dotenv(Path(__file__).resolve().parent / ".env")
 
@@ -66,10 +66,11 @@ def parse_nc_datetime(value):
         return None
 
 
-def format_text_and_state(subject: str, message: str, task_key: str, object_id, object_type) -> str:
+def format_text_and_state(
+    subject: str, message: str, task_key: str, object_id, object_type
+) -> str:
     deadline, calendar, descr = "", "", ""
     subject = subject.split("(")[0].strip()
-
 
     for line in message.splitlines():
         line = line.strip()
@@ -83,13 +84,11 @@ def format_text_and_state(subject: str, message: str, task_key: str, object_id, 
         elif line.startswith("Description:"):
             descr = line.replace("Description:", "").strip()
 
-
     parts = [subject]
     if descr:
         parts.append(f"Description: {descr}")
     if deadline:
         parts.append(f"Deadline: {deadline}")
-
 
     state = load_state()
     task_key = str(task_key)
@@ -105,14 +104,11 @@ def format_text_and_state(subject: str, message: str, task_key: str, object_id, 
     state[task_key]["description"] = descr
     state[task_key]["notification_id"] = str(task_key)
 
-
     save_state(state)
-
 
     print("12x: object_type =", object_type)
     print("12y: object_id =", object_id)
     print("12z: calendar_name =", calendar)
-
 
     return "\n".join(parts)
 
@@ -159,7 +155,6 @@ def save_state(state):
     STATE_FILE.write_text(json.dumps(normalized, indent=2))
 
 
-# TODO: debug
 def notify_delegator(task_key: str, action: bool = False, deadline: bool = False):
     message, payload, subject = "", "", ""
     state = load_state()
@@ -172,7 +167,7 @@ def notify_delegator(task_key: str, action: bool = False, deadline: bool = False
     if deadline:
         update += f"Deadline: {state[task_key]['deadline'].split('T')[0]}\n"
 
-    message="The following task has been updated:\n" + update
+    message = "The following task has been updated:\n" + update
     subject = state[task_key]["subject"]
     USER_MAP_SIGNAL = json.loads(get_secret("USER_MAP_SIGNAL", "{}") or "{}")
 
@@ -187,19 +182,19 @@ def notify_delegator(task_key: str, action: bool = False, deadline: bool = False
         return
 
     payload = {
-                "message": message + f"Task #: {task_key}\n{subject}",
-                "number": SIGNAL_SENDER,
-                "recipients": recipients,
+        "message": message + f"Task #: {task_key}\n{subject}",
+        "number": SIGNAL_SENDER,
+        "recipients": recipients,
     }
     print("9c: payload =", payload)
-    requests.post(SIGNAL_URL, json=payload, timeout=20)    
+    requests.post(SIGNAL_URL, json=payload, timeout=20)
 
 
 def get_client():
     print(NEXTCLOUD_BASE_URL)
     print(NEXTCLOUD_PASS)
     try:
-        client = DAVClient( # pylint: disable=not-callable
+        client = DAVClient(  # pylint: disable=not-callable
             url=NEXTCLOUD_BASE_URL + "/remote.php/dav",
             username=NEXTCLOUD_USER,
             password=NEXTCLOUD_PASS,
@@ -262,16 +257,16 @@ def cleanup_old_tasks_and_queue_files(days: int = 30):
 
 
 def completed_timestamp(task_key, action):
-      state = load_state()
-      task = state.get(task_key)
+    state = load_state()
+    task = state.get(task_key)
 
-      if action == "done":
-            task["completed_timestamp"] = utc_now_iso()
-      else:
-            task["completed_timestamp"] = ""
-      state[task_key] = task
-      save_state(state)
-      return task["completed_timestamp"]
+    if action == "done":
+        task["completed_timestamp"] = utc_now_iso()
+    else:
+        task["completed_timestamp"] = ""
+    state[task_key] = task
+    save_state(state)
+    return task["completed_timestamp"]
 
 
 def completed(task_key, delta):
@@ -350,7 +345,9 @@ def normalize_deadline(value):
 
 
 # add multiple deltas to sent_deltas; for when task is due soon after creation, to avoid spam
-def mark_due_reminder_deltas(task: dict, now: datetime, reminder_deltas: list[timedelta]):
+def mark_due_reminder_deltas(
+    task: dict, now: datetime, reminder_deltas: list[timedelta]
+):
     deadline = parse_deadline_value(task.get("deadline"))
     if not deadline:
         return
