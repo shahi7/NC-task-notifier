@@ -1,4 +1,4 @@
-# server-side config to set up delegator:calendar info
+# server-side config to set up delegator:calendar info. must be added to vault
 [
   {
     "id": "alice-main",

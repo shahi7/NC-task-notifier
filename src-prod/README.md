@@ -1,3 +1,9 @@
+## Latest Updates
+- Scale the software to support multiple delegators/calendars
+- Allow delegator(s) to add assignee name/Discord username (Discord slash command /add_user)
+
+***
+
 # Discord Task Bot Guide
 
 This is an overview to the Discord task bot and a simple usage and onboarding guide.
@@ -89,4 +95,5 @@ This information is useful for delegators and developers when troubleshooting.
 | Update button works in Discord but not in Nextcloud | CALDAV write failure | Check Nextcloud credentials, URL, and update logs |
 | Follow-up jobs keep failing | Bot-side message edit/reference problem | Check failed queue files and bot logs |
 
-
+### Future Features:
+- User-friendly way to add delegators (currently server-side only)
