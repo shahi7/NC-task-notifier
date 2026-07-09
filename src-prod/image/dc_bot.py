@@ -240,18 +240,38 @@ bot = build_bot()
 # slash command for adding new assignees
 @bot.tree.command(name="map_add", description="Add or update a Discord user mapping")
 @discord.app_commands.describe(
-    delegation_id="Delegation to update",
-    name="Assignment name",
-    discord_id="Discord user ID",
+    name="Assignee name",
+    user="Discord username of new assignee",
+    delegation_id="Delegation to update (optional; only needed if you manage multiple)",
 )
-async def map_add(interaction: discord.Interaction, delegation_id: str, name: str, discord_id: str):
+async def map_add(
+    interaction: discord.Interaction,
+    name: str,
+    user: discord.User,
+    delegation_id: str | None = None,
+):
     allowed = get_delegations_for_user(interaction.user.id)
-    if not any(d.get("id") == delegation_id for d in allowed):
+
+    if not allowed:
+        await interaction.response.send_message("Not allowed.", ephemeral=True)
+        return
+
+    if delegation_id is None:
+        if len(allowed) == 1:
+            delegation_id = str(allowed[0]["id"])
+        else:
+            await interaction.response.send_message(
+                "You manage multiple delegations. Please provide delegation_id.",
+                ephemeral=True,
+            )
+            return
+
+    if not any(str(d.get("id")) == delegation_id for d in allowed):
         await interaction.response.send_message("Not allowed for that delegation.", ephemeral=True)
         return
 
     cleaned_name = name.strip().lower()
-    cleaned_discord_id = discord_id.strip()
+    cleaned_discord_id = str(user.id)
 
     if not cleaned_name:
         await interaction.response.send_message("Name cannot be empty.", ephemeral=True)

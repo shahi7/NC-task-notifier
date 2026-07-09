@@ -1,1 +1,1 @@
-{{ with secret "secret/data/taskbot" }}{{ .Data.data.NEXTCLOUD_PASS }}{{ end }}
+{{ with secret "secret/data/taskbot/runtime" }}{{ .Data.data.NEXTCLOUD_PASS }}{{ end }}
