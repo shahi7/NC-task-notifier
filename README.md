@@ -1,3 +1,11 @@
+## Latest Updates
+- Store secrets in Vault
+- Scale the software to support multiple delegators/calendars
+- Allow delegator(s) to add assignee name/Discord username (Discord slash command /add_user)
+- Change buttons in Discord UI: show Reset button after completed/canceled 
+
+***
+
 # Discord Task Bot Guide
 
 This is an overview to the Discord task bot and a simple usage and onboarding guide.
@@ -18,17 +26,10 @@ The polling script checks the Nextcloud calendar for new and changed tasks, writ
 - Send task DMs to newly added assignees and notify removed assignees of removal.
 - Retry queue to work around temporary Discord/Nextcloud network failures.
 
-## Running the system
-
-The system has two long-running responsibilities:
-
-- **Poller**: checks Nextcloud regularly and enqueues work.
-- **Bot**: stays connected to Discord and processes queued notifications.
-
 ## How work flows
 
 1. A delegator creates or modifies a task in Nextcloud.
-2. The poller reads new/modified tasks from the tasks calendar.
+2. The polling script reads new/modified tasks from the tasks calendar.
 3. The script stores task metadata locally.
 4. A DM job is queued for each target Discord user.
 5. The bot processes the DM queue and sends/follows-up in Discord DMs.
@@ -43,13 +44,9 @@ Delegators are the people creating and assigning tasks in Nextcloud.
 - Create tasks in Apps > Tasks. Tasks will be visible in the corresponding calendar.
 - Add assignees by entering assignee first names in the Tags section.
 
-See the below image for a visual guide on Nextcloud task creation.
-
-<img width="403" height="609" alt="Screenshot 2026-06-30 at 8 57 25 PM" src="https://github.com/user-attachments/assets/445d0e91-e61b-4c2b-bcf2-6e18c4530c46" />
-
 ## Assignee setup
 
-Assignees are the people who receive task DMs and interact with them in Discord.
+Assignees are the people who receive task DMs and interact with them in Discord.]
 
 - Join the SAA Discord server.
 - Allow DMs from server members for the SAA server.
@@ -61,11 +58,6 @@ Assignees are the people who receive task DMs and interact with them in Discord.
 - Follow-up reminder messages that reference the original task DM.
 - Update messages when the task changes.
 
-<div align="center">
-  <img src="https://github.com/user-attachments/assets/b29e2a86-879d-4849-af27-b6f346ed6f5e" width="45%" />
-  <img src="https://github.com/user-attachments/assets/dfff0991-d6e6-4d02-9462-71c8225a9ef1" width="45%" />
-</div>
-
 ## Configuration
 
 The most important environment values usually include:
@@ -74,6 +66,13 @@ The most important environment values usually include:
 - `CALENDAR_URL`: URL for target task calendar.
 - `USER_MAP_DC`: mapping from task assignee labels to Discord user IDs.
 - `REMINDER_DELTAS`: how long before a deadline reminder should be sent.
+
+## Running the system
+
+The system has two long-running responsibilities:
+
+- **Poller**: checks Nextcloud regularly and enqueues work.
+- **Bot**: stays connected to Discord and processes queued notifications.
 
 ## Error handling
 
@@ -98,4 +97,5 @@ This information is useful for delegators and developers when troubleshooting.
 | Update button works in Discord but not in Nextcloud | CALDAV write failure | Check Nextcloud credentials, URL, and update logs |
 | Follow-up jobs keep failing | Bot-side message edit/reference problem | Check failed queue files and bot logs |
 
-
+### Future Features:
+- User-friendly way to add delegators (currently server-side only)
