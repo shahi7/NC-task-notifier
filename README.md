@@ -60,12 +60,10 @@ Assignees are the people who receive task DMs and interact with them in Discord.
 
 ## Configuration
 
-The most important environment values usually include:
+These important environment values/secrets should be configured before running:
 
-- `NEXTCLOUD_USER` and `NEXTCLOUD_PASS`: app credentials for the delegator Nextcloud account, generated in account settings.
+- `NEXTCLOUD_USER` and `NEXTCLOUD_PASS`: app credentials for the delegator's Nextcloud account, generated in account settings.
 - `CALENDAR_URL`: URL for target task calendar.
-- `USER_MAP_DC`: mapping from task assignee labels to Discord user IDs.
-- `REMINDER_DELTAS`: how long before a deadline reminder should be sent.
 
 ## Running the system
 
@@ -73,6 +71,8 @@ The system has two long-running responsibilities:
 
 - **Poller**: checks Nextcloud regularly and enqueues work.
 - **Bot**: stays connected to Discord and processes queued notifications.
+
+To start, configure Vault/Vault Agent so the required app secrets are rendered into the directory `/run/secrets`, then start the stack with `docker compose up -d --build`.
 
 ## Error handling
 
