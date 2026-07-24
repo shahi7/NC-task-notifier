@@ -47,6 +47,8 @@ services:
       DATA_DIR: /app/data
       # TODO: local
       VAULT_ADDR: http://vault:8200
+      VAULT_KV_MOUNT: kv
+      VAULT_USER_MAP_PREFIX: config/user_map_dc
       DISCORD_BOT_TOKEN_FILE: /run/secrets/discord_bot_token
       NEXTCLOUD_USER_FILE: /run/secrets/nextcloud_user
       NEXTCLOUD_PASS_FILE: /run/secrets/nextcloud_pass
