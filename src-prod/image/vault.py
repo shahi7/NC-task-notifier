@@ -11,6 +11,9 @@ VAULT_ADDR = os.getenv("VAULT_ADDR")
 VAULT_BOT_TOKEN = get_secret("VAULT_BOT_TOKEN")  # new, narrow token
 LOCAL_DEV = os.getenv("LOCAL_DEV", "").strip() == "1"  # remove; for local testing
 
+VAULT_KV_MOUNT = os.getenv("VAULT_KV_MOUNT", "kv").strip()
+VAULT_USER_MAP_PREFIX = os.getenv("VAULT_USER_MAP_PREFIX", "config/user_map_dc").strip("/")
+
 
 # remove; for local testing
 def local_user_map_file(delegation_id: str) -> Path:
@@ -72,4 +75,5 @@ def get_delegations_for_user(discord_user_id: int) -> list[dict]:
 
 
 def user_map_path_for(delegation_id: str) -> str:
-    return f"secret/data/taskbot/config/user_map_dc/{delegation_id}"
+    delegation_id = str(delegation_id).strip()
+    return f"{VAULT_KV_MOUNT}/data/{VAULT_USER_MAP_PREFIX}/{delegation_id}"
