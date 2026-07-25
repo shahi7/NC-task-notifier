@@ -15,12 +15,6 @@ VAULT_BOT_TOKEN = get_secret("VAULT_BOT_TOKEN")
 VAULT_KV_MOUNT = os.getenv("VAULT_KV_MOUNT", "kv").strip()
 VAULT_USER_MAP_PREFIX = os.getenv("VAULT_USER_MAP_PREFIX", "config/user_map_dc").strip("/")
 
-if not LOCAL_DEV:
-    if not VAULT_ADDR:
-        raise RuntimeError("VAULT_ADDR is not set")
-    if not VAULT_BOT_TOKEN:
-        raise RuntimeError("VAULT_BOT_TOKEN is not set")
-
 # remove; for local testing
 def local_user_map_file(delegation_id: str) -> Path:
     env_name = f"USER_MAP_DC__{delegation_id}_FILE"

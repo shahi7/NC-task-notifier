@@ -45,7 +45,7 @@ services:
       - .env
     environment:
       DATA_DIR: /app/data
-      # TODO: local
+      # TODO: local; remove
       VAULT_ADDR: http://vault:8200
       VAULT_KV_MOUNT: kv
       VAULT_USER_MAP_PREFIX: config/user_map_dc
