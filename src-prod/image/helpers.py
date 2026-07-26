@@ -275,9 +275,7 @@ def completed(task_key, delta):
     cutoff = datetime.now(timezone.utc) - timedelta(days=delta)
 
     ts = task.get("completed_timestamp", "")
-    if ts and datetime.fromisoformat(ts) < cutoff:
-        return True
-    return False
+    return ts and datetime.fromisoformat(ts) < cutoff
 
 
 def normalize_status(status) -> str:
