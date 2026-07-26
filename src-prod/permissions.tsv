@@ -1,0 +1,96 @@
+# mode	 state   	 type	 path                                           	 note                                                   	 check
+  2750	 present 	 dir 	 .                                              	 production source; owner-writable, admin-group-readable
+   640	 present 	 file	 .env.example                                   	 non-secret template values
+   600	 optional	 file	 .env                                           	 production environment; never staged or archived
+   640	 present 	 file	 .gitignore                                     	 ignore rules
+   640	 present 	 file	 .gitlab-ci.yml                                 	 pipeline definition
+   640	 present 	 file	 FOLDER_STRUCTURE.md                            	 template inventory
+   640	 present 	 file	 README.md                                      	 service template overview
+   640	 present 	 file	 docker-compose.yml                             	 container contract
+   640	 present 	 file	 justfile                                       	 local task runner
+   640	 present 	 file	 permissions.tsv                                	 permission policy
+   640	 present 	 file	 scripts.tsv                                    	 script inventory
+   700	 present 	 dir 	 backups/                                       	 encrypted backup staging only
+   600	 present 	 file	 backups/.gitkeep                               	 placeholder only
+  2750	 present 	 dir 	 ci/                                            	 image-lock policy directory
+   640	 present 	 file	 ci/README.md                                   	 approved image-lock format
+   400	 optional	 file	 ci/approved-images.lock                        	 commit-bound approved image set                        	 nonempty
+  2750	 present 	 dir 	 config/                                        	 non-secret service configuration
+   640	 present 	 file	 config/README.md                               	 config guidance
+   640	 present 	 file	 config/service-config.example.yml              	 example service config
+  2770	 present 	 dir 	 data/                                          	 mutable application state root
+  2770	 present 	 dir 	 data/app/                                      	 app data mount
+   660	 present 	 file	 data/app/.gitkeep                              	 placeholder in writable state
+   700	 present 	 dir 	 data/tailscale/                                	 rootless sidecar-owned Tailscale state mount
+   600	 present 	 file	 data/tailscale/.gitkeep                        	 placeholder in protected sidecar state
+  2750	 present 	 dir 	 docs/                                          	 service documentation
+   640	 present 	 file	 docs/access.md                                 	 access model
+   640	 present 	 file	 docs/architecture.md                           	 compose/runtime model
+   640	 present 	 file	 docs/opentofu.md                               	 OpenTofu and CI/CD contract
+   640	 present 	 file	 docs/operations.md                             	 operations runbook
+   640	 present 	 file	 docs/permissions.md                            	 permissions model
+   640	 present 	 file	 docs/recovery.md                               	 recovery runbook
+   640	 present 	 file	 docs/registry-promotion.md                     	 image promotion policy
+   640	 present 	 file	 docs/secrets.md                                	 secret handling policy
+  2750	 present 	 dir 	 hooks/                                         	 optional reviewed service hooks
+   640	 present 	 file	 hooks/.gitkeep                                 	 placeholder only
+  2750	 present 	 dir 	 opentofu/                                      	 metadata-only OpenTofu package
+   640	 present 	 file	 opentofu/README.md                             	 OpenTofu overview
+   640	 present 	 file	 opentofu/locals.tf                             	 metadata locals
+   640	 present 	 file	 opentofu/outputs.tf                            	 metadata outputs
+   640	 present 	 file	 opentofu/tofu.auto.tfvars.example              	 example tfvars
+   640	 present 	 file	 opentofu/variables.tf                          	 metadata variables
+   640	 present 	 file	 opentofu/versions.tf                           	 provider/version pins
+   700	 present 	 dir 	 runtime/                                       	 runtime root; never source-group writable
+   700	 present 	 dir 	 runtime/control/                               	 one-shot control files
+   600	 present 	 file	 runtime/control/.gitkeep                       	 placeholder only
+   600	 optional	 file	 runtime/control/tailscale-force-reauth         	 one-shot reauth sentinel
+   700	 present 	 dir 	 runtime/secrets/                               	 Vault-rendered secret root
+   600	 present 	 file	 runtime/secrets/.gitkeep                      	 placeholder only
+  2750	 present 	 dir 	 runtime/secrets/app/                           	 app consumer secret directory
+   640	 present 	 file	 runtime/secrets/app/.gitkeep                   	 placeholder only
+  2750	 present 	 dir 	 runtime/secrets/ts-sidecar/                    	 Tailscale consumer secret directory
+   640	 present 	 file	 runtime/secrets/ts-sidecar/.gitkeep            	 placeholder only
+  2750	 present 	 dir 	 runtime/secrets/vault-agent/                   	 Vault Agent readiness directory
+   640	 present 	 file	 runtime/secrets/vault-agent/.gitkeep           	 placeholder only
+   440	 optional	 file	 runtime/secrets/vault-agent/.vault-agent-ready	 Vault Agent readiness marker                           	 nonempty
+   440	 optional	 file	 runtime/secrets/ts-sidecar/tailscale_authkey  	 Tailscale bootstrap credential                        	 nonempty
+   440	 optional	 file	 runtime/secrets/app/app.env                    	 app env rendered by Vault Agent                       	 nonempty
+   440	 optional	 file	 runtime/secrets/app/app_secret_1               	 rendered app secret                                   	 nonempty
+   440	 optional	 file	 runtime/secrets/app/app_secret_2               	 rendered app secret                                   	 nonempty
+   440	 optional	 file	 runtime/secrets/app/oidc_client_id             	 rendered OIDC identifier                              	 nonempty
+   440	 optional	 file	 runtime/secrets/app/oidc_client_secret         	 rendered OIDC credential                              	 nonempty
+   440	 optional	 file	 runtime/secrets/app/oidc_issuer_url            	 rendered OIDC issuer                                  	 nonempty
+   700	 present 	 dir 	 runtime/vault-auth/                            	 Vault Agent AppRole input; owner only
+   600	 present 	 file	 runtime/vault-auth/.gitkeep                    	 placeholder only
+   400	 optional	 file	 runtime/vault-auth/role_id                     	 AppRole role identifier
+   400	 optional	 file	 runtime/vault-auth/secret_id                   	 AppRole authentication credential
+  2750	 present 	 dir 	 scripts/                                       	 reviewed executable helpers
+   750	 present 	 file	 scripts/deploy-stack-over-ssh.sh               	 staged SSH transport helper
+   750	 present 	 file	 scripts/permissions.sh                         	 permission check/apply helper
+   750	 present 	 file	 scripts/remote-deploy-release.sh               	 remote release transaction
+   750	 present 	 file	 scripts/retag-headscale-node.sh                	 operator-only Headscale helper
+   750	 present 	 file	 scripts/refresh-headscale-authkey.sh           	 secret-safe Headscale authkey refresh helper
+   750	 present 	 file	 scripts/setup-service.sh                       	 local bootstrap and Vault setup helper
+   755	 present 	 file	 scripts/start-tailscale-sidecar.sh             	 Tailscale launcher; container-mounted
+   755	 present 	 file	 scripts/start-vault-agent.sh                   	 Vault Agent launcher; container-mounted
+   750	 present 	 file	 scripts/validate-structure.sh                  	 CI structure/secret-hygiene gate
+   750	 present 	 file	 scripts/verify-approved-images.sh              	 exact image-lock verifier
+  2750	 present 	 dir 	 tests/                                         	 source-only policy tests
+   750	 present 	 file	 tests/test-deploy-context.sh                  	 deployment context validation tests
+   750	 present 	 file	 tests/test-remote-deploy-release.sh            	 release rollback tests
+   750	 present 	 file	 tests/test-verify-approved-images.sh           	 image-lock policy tests
+   750	 present 	 file	 tests/test-validate-structure.sh               	 structure/secret-hygiene tests
+  2750	 present 	 dir 	 tools/                                         	 template-maintainer tools
+   750	 present 	 file	 tools/push-template-remotes.sh                 	 template mirror helper
+  2750	 present 	 dir 	 vault/                                         	 Vault Agent configuration
+   644	 present 	 file	 vault/agent.hcl                                	 Vault Agent config; container-mounted
+  2755	 present 	 dir 	 vault/templates/                               	 Vault template sources; container-mounted
+   644	 present 	 file	 vault/templates/app.env.ctmpl                  	 app env template; container-mounted
+   640	 present 	 file	 vault/templates/app_secret_1.ctmpl             	 app secret template
+   640	 present 	 file	 vault/templates/app_secret_2.ctmpl             	 app secret template
+   640	 present 	 file	 vault/templates/oidc_client_id.ctmpl           	 OIDC client ID template
+   640	 present 	 file	 vault/templates/oidc_client_secret.ctmpl       	 OIDC client secret template
+   640	 present 	 file	 vault/templates/oidc_issuer_url.ctmpl          	 OIDC issuer template
+   640	 present 	 file	 vault/templates/ready.ctmpl                    	 readiness template
+   640	 present 	 file	 vault/templates/tailscale_authkey.ctmpl        	 Tailscale credential template

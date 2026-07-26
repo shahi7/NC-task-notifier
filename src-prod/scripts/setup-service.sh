@@ -228,7 +228,8 @@ bootstrap_runtime() {
     "$REPO_ROOT/data/tailscale" \
     "$REPO_ROOT/runtime/control" \
     "$REPO_ROOT/runtime/secrets" \
-    "$REPO_ROOT/runtime/secrets/app" \
+    "$REPO_ROOT/runtime/secrets/bot" \
+    "$REPO_ROOT/runtime/secrets/poller" \
     "$REPO_ROOT/runtime/secrets/ts-sidecar" \
     "$REPO_ROOT/runtime/secrets/vault-agent" \
     "$REPO_ROOT/runtime/vault-auth" \
@@ -239,7 +240,8 @@ bootstrap_runtime() {
     "$REPO_ROOT/data/tailscale/.gitkeep" \
     "$REPO_ROOT/runtime/control/.gitkeep" \
     "$REPO_ROOT/runtime/secrets/.gitkeep" \
-    "$REPO_ROOT/runtime/secrets/app/.gitkeep" \
+    "$REPO_ROOT/runtime/secrets/bot/.gitkeep" \
+    "$REPO_ROOT/runtime/secrets/poller/.gitkeep" \
     "$REPO_ROOT/runtime/secrets/ts-sidecar/.gitkeep" \
     "$REPO_ROOT/runtime/secrets/vault-agent/.gitkeep" \
     "$REPO_ROOT/runtime/vault-auth/.gitkeep" \
@@ -252,7 +254,8 @@ bootstrap_runtime() {
     "$REPO_ROOT/runtime/vault-auth" \
     "$REPO_ROOT/backups" 2>/dev/null || true
   chmod 2750 \
-    "$REPO_ROOT/runtime/secrets/app" \
+    "$REPO_ROOT/runtime/secrets/bot" \
+    "$REPO_ROOT/runtime/secrets/poller" \
     "$REPO_ROOT/runtime/secrets/ts-sidecar" \
     "$REPO_ROOT/runtime/secrets/vault-agent" 2>/dev/null || true
   chmod 600 \
@@ -261,7 +264,8 @@ bootstrap_runtime() {
     "$REPO_ROOT/runtime/vault-auth/.gitkeep" \
     "$REPO_ROOT/backups/.gitkeep" 2>/dev/null || true
   chmod 640 \
-    "$REPO_ROOT/runtime/secrets/app/.gitkeep" \
+    "$REPO_ROOT/runtime/secrets/bot/.gitkeep" \
+    "$REPO_ROOT/runtime/secrets/poller/.gitkeep" \
     "$REPO_ROOT/runtime/secrets/ts-sidecar/.gitkeep" \
     "$REPO_ROOT/runtime/secrets/vault-agent/.gitkeep" 2>/dev/null || true
 }

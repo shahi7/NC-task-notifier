@@ -1,0 +1,5 @@
+# Example non-secret service configuration.
+# Replace this with the app's real config file if needed.
+service:
+  bind_address: 0.0.0.0
+  port: 80
