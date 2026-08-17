@@ -1,3 +1,0 @@
-{{- with secret (env "VAULT_KV_PATH") -}}
-{{ index .Data.data "USER_MAP_SIGNAL" }}
-{{- end -}}

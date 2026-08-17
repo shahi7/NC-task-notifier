@@ -1,5 +1,0 @@
-stack_name = "example-service"
-
-labels = {
-  owner = "onsaa"
-}

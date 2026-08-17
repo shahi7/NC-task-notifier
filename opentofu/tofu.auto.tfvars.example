@@ -1,0 +1,14 @@
+host_id    = "z1"
+service_id = "tb"
+stack_name = "nc-taskbot"
+
+vault_kv_path          = "nc-taskbot"
+vault_user_map_kv_path = "nc-taskbot/user_map_dc"
+
+# the default stack has no inbound surface and no tailnet node
+required_external_networks = ["vault_backend", "z1_nc_stack-internal"]
+ts_profile_enabled         = false
+
+labels = {
+  owner = "onsaa"
+}

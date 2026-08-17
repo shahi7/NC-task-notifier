@@ -1,1 +1,0 @@
-{{ with secret "secret/data/taskbot/runtime" }}{{ .Data.data.DELEGATIONS_JSON }}{{ end }}

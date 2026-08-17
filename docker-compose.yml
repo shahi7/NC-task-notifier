@@ -1,0 +1,466 @@
+name: ${HOST_ID:-default}_${SERVICE_ID:-default}
+
+# ============================================================
+# Standard Anchors
+# This replaces per-service `restart: unless-stopped` declarations from the
+# original Compose. The service template centralizes operational defaults so
+# every service has the same log retention, restart, and resource contract.
+# Shared defaults and size profiles used by services in this stack.
+# Remove unused anchors and add new ones as needed.
+# ============================================================
+
+# Bounded logs keep long-running services from filling disk.
+x-logging: &default-logging
+  driver: "json-file"
+  options:
+    max-size: "10m"
+    max-file: "3"
+
+# Containers should come back after reboot unless explicitly stopped.
+x-restart: &default-restart
+  restart: unless-stopped
+
+# Baseline hardening; individual services can add only what they need.
+x-security: &default-security
+  security_opt:
+    - no-new-privileges:true
+
+# Standard retry cadence for service dependencies and readiness checks.
+x-healthcheck: &healthcheck-defaults
+  interval: 30s
+  timeout: 10s
+  retries: 5
+  start_period: 30s
+
+# Lean: Vault agents, Tailscale sidecars, DNS sync, and light proxies.
+x-resources-lean: &resources-lean
+  cpus: "0.25"
+  mem_limit: 128M
+  mem_reservation: 64M
+
+# Small: lightweight web apps and single-purpose services.
+x-resources-small: &resources-small
+  cpus: "0.50"
+  mem_limit: 512M
+  mem_reservation: 256M
+
+# ============================================================
+# Services
+# ============================================================
+
+services:
+  # ------------------------------------------------------------
+  # App Container
+  # 2026-07-27: outbound only. Nothing here listens on HTTP.
+  # ------------------------------------------------------------
+
+  signal-api:
+    # Standardized from the initial local-only service: bounded resources,
+    # disk-safe logging, and the shared non-root app identity.
+    # fix 2026-07-27: pinned, and rootless so it can write state as APP_UID.
+    image: bbernhard/signal-cli-rest-api:${SIGNAL_API_VERSION:-0.100-rootless}
+    container_name: ${HOST_ID}-${SERVICE_ID}-signal-api
+    <<: [*default-restart, *default-security, *resources-small]
+    logging: *default-logging
+    user: "${APP_UID:-1000}:${APP_GID:-1000}"
+    # fix 2026-07-27: was the only container without a capability drop.
+    cap_drop:
+      - ALL
+    environment:
+      TZ: ${TZ:-America/Toronto}
+      MODE: "native"
+    volumes:
+      # fix 2026-07-27: moved under data/ so ignore and permission rules cover it.
+      - ./data/signal:/home/.local/share/signal-cli
+    networks:
+      - stack-internal
+
+  bot:
+    # The original bot consumed an unrestricted shared secret volume. It now
+    # reads only its Vault-rendered files and starts after they are available.
+    # This follows the template's least-privilege rule: a service gets only
+    # the secret directory it consumes, never Vault credentials or all secrets.
+    # fix 2026-07-27: context is app/ only; APP_IMAGE can be a digest later.
+    image: ${APP_IMAGE:-local/nc-taskbot:dev}
+    build:
+      context: ./app
+    container_name: ${HOST_ID}-${SERVICE_ID}-bot
+    <<: [*default-restart, *default-security, *resources-small]
+    logging: *default-logging
+    user: "${APP_UID:-1000}:${APP_GID:-1000}"
+    group_add:
+      - "${STACK_SECRETS_GID:-1007}"
+    read_only: true
+    cap_drop:
+      - ALL
+    command:
+      - /bin/sh
+      - -ec
+      - |
+        # `depends_on` starts in dependency order but does not prove a secret
+        # has rendered yet. Wait for each required file before starting Python.
+        for secret in discord_bot_token nextcloud_user nextcloud_pass signal_sender vault_bot_token delegations_json; do
+          until test -s "/run/stack-secrets/$$secret"; do
+            echo "waiting for Vault secret: $$secret"
+            sleep 1
+          done
+        done
+        exec python -u dc_bot.py
+    environment:
+      TZ: ${TZ:-America/Toronto}
+      # Runtime configuration.
+      DATA_DIR: /app/data
+
+      # Service endpoints. `nextcloud` resolves on nextcloud_backend.
+      NEXTCLOUD_BASE_URL: ${NEXTCLOUD_BASE_URL:-http://nextcloud}
+      SIGNAL_URL: ${SIGNAL_URL:-http://signal-api:8080/v2/send/}
+
+      # fix 2026-07-27: was hardcoded http, and z1's Vault is TLS only.
+      VAULT_ADDR: ${VAULT_ADDR}
+      VAULT_USER_MAP_PATH: ${VAULT_USER_MAP_PATH}
+      REQUESTS_CA_BUNDLE: /etc/ssl/vault-ca.crt
+
+      # Reminder schedule.
+      REMINDER_HOURS_BEFORE: ${REMINDER_HOURS_BEFORE:-24}
+      REMINDER_DAYS_BEFORE: ${REMINDER_DAYS_BEFORE:-0}
+      REMINDER_DELTAS: ${REMINDER_DELTAS:-[]}
+
+      # Vault-rendered secret files. Do not put credential values in `.env`;
+      # the Vault Agent writes these files and this container reads them only.
+      DISCORD_BOT_TOKEN_FILE: /run/stack-secrets/discord_bot_token
+      NEXTCLOUD_USER_FILE: /run/stack-secrets/nextcloud_user
+      NEXTCLOUD_PASS_FILE: /run/stack-secrets/nextcloud_pass
+      SIGNAL_SENDER_FILE: /run/stack-secrets/signal_sender
+      VAULT_BOT_TOKEN_FILE: /run/stack-secrets/vault_bot_token
+      DELEGATIONS_JSON_FILE: /run/stack-secrets/delegations_json
+
+    depends_on:
+      vault-agent:
+        condition: service_healthy
+      signal-api:
+        condition: service_started
+    volumes:
+      # fix 2026-07-27: was ./data, which also exposed the sidecar state dir.
+      - ./data/app:/app/data
+      - ./runtime/secrets/bot:/run/stack-secrets:ro,z
+      # fix 2026-07-27: the app talks to Vault itself, so it needs the private CA.
+      - ${HOST_VAULT_CA_CERT}:/etc/ssl/vault-ca.crt:ro,z
+    tmpfs:
+      - /tmp
+      - /run
+    networks:
+      - stack-internal
+      - vault_backend
+      - nextcloud_backend
+
+  poller:
+    # The poller follows the same least-privilege secret and non-root runtime
+    # contract as the bot, while keeping its own cron process and data state.
+    # fix 2026-07-27: context is app/ only; APP_IMAGE can be a digest later.
+    image: ${APP_IMAGE:-local/nc-taskbot:dev}
+    build:
+      context: ./app
+    container_name: ${HOST_ID}-${SERVICE_ID}-poller
+    <<: [*default-restart, *default-security, *resources-small]
+    logging: *default-logging
+    user: "${APP_UID:-1000}:${APP_GID:-1000}"
+    group_add:
+      - "${STACK_SECRETS_GID:-1007}"
+    read_only: true
+    cap_drop:
+      - ALL
+    command:
+      - /bin/sh
+      - -ec
+      - |
+        # As above, ensure Vault has rendered all poller inputs before cron.
+        for secret in nextcloud_user nextcloud_pass signal_sender vault_bot_token delegations_json; do
+          until test -s "/run/stack-secrets/$$secret"; do
+            echo "waiting for Vault secret: $$secret"
+            sleep 1
+          done
+        done
+        exec /usr/local/bin/supercronic -debug /app/poller.crontab
+    environment:
+      TZ: ${TZ:-America/Toronto}
+      # Runtime configuration.
+      DATA_DIR: /app/data
+
+      # Service endpoints. `nextcloud` resolves on nextcloud_backend.
+      NEXTCLOUD_BASE_URL: ${NEXTCLOUD_BASE_URL:-http://nextcloud}
+      SIGNAL_URL: ${SIGNAL_URL:-http://signal-api:8080/v2/send/}
+
+      # fix 2026-07-27: poller reads user maps from Vault now, so it needs access.
+      VAULT_ADDR: ${VAULT_ADDR}
+      VAULT_USER_MAP_PATH: ${VAULT_USER_MAP_PATH}
+      REQUESTS_CA_BUNDLE: /etc/ssl/vault-ca.crt
+
+      # Reminder schedule.
+      REMINDER_HOURS_BEFORE: ${REMINDER_HOURS_BEFORE:-24}
+      REMINDER_DAYS_BEFORE: ${REMINDER_DAYS_BEFORE:-0}
+      REMINDER_DELTAS: ${REMINDER_DELTAS:-[]}
+
+      # Vault-rendered secret files.
+      NEXTCLOUD_USER_FILE: /run/stack-secrets/nextcloud_user
+      NEXTCLOUD_PASS_FILE: /run/stack-secrets/nextcloud_pass
+      SIGNAL_SENDER_FILE: /run/stack-secrets/signal_sender
+      # fix 2026-07-27: poller needs this too now that it reads user maps.
+      VAULT_BOT_TOKEN_FILE: /run/stack-secrets/vault_bot_token
+      DELEGATIONS_JSON_FILE: /run/stack-secrets/delegations_json
+
+    depends_on:
+      vault-agent:
+        condition: service_healthy
+      signal-api:
+        condition: service_started
+    volumes:
+      # fix 2026-07-27: was ./data, which also exposed the sidecar state dir.
+      - ./data/app:/app/data
+      - ./runtime/secrets/poller:/run/stack-secrets:ro,z
+      # fix 2026-07-27: the app talks to Vault itself, so it needs the private CA.
+      - ${HOST_VAULT_CA_CERT}:/etc/ssl/vault-ca.crt:ro,z
+    tmpfs:
+      - /tmp
+      - /run
+    networks:
+      - stack-internal
+      - vault_backend
+      - nextcloud_backend
+
+  # ------------------------------------------------------------
+  # Vault Agent
+  # Renders Vault KV values into files under runtime/secrets.
+  # Uses the current Vault 1.x line by default through VAULT_VERSION.
+  # The original Compose ran a development Vault in this application stack.
+  # The service template instead connects to the managed Vault and authenticates
+  # with a per-stack AppRole, keeping the root token and Vault server out of it.
+  # ------------------------------------------------------------
+  vault-agent:
+    image: hashicorp/vault:${VAULT_VERSION:-1.21.4}
+    container_name: ${HOST_ID}-${SERVICE_ID}-vault-agent
+
+    # Standard service profile.
+    <<: [*default-restart, *default-security, *resources-lean]
+    logging: *default-logging
+    group_add:
+      - "${STACK_SECRETS_GID:-1007}"
+
+    # Hardening.
+    read_only: true
+    # Rootless Docker maps container-root bind mounts to nobody. Keep the
+    # agent capability-free while allowing the mapped identity to read its
+    # AppRole input and render runtime secrets.
+    user: "${VAULT_AGENT_UID:-65534}:${VAULT_AGENT_GID:-65534}"
+    cap_drop:
+      - ALL
+
+    # Vault access networks.
+    networks:
+      - stack-internal
+      - vault_backend
+
+    # Vault connection and KV source.
+    environment:
+      TZ: ${TZ:-America/Toronto}
+      # Vault endpoint and TLS.
+      VAULT_ADDR: ${VAULT_ADDR}
+      VAULT_NAMESPACE: ${VAULT_NAMESPACE:-}
+      VAULT_CACERT: ${VAULT_CACERT:-/vault/tls/ca.crt}
+
+      # KV path used by vault/templates/*.ctmpl.
+      VAULT_KV_PATH: ${VAULT_KV_PATH}
+      APPROLE_MOUNT: ${APPROLE_MOUNT:-approle}
+      VAULT_STATIC_SECRET_RENDER_INTERVAL: ${VAULT_STATIC_SECRET_RENDER_INTERVAL:-5m}
+
+      # Add Vault-agent-specific env vars below this line.
+
+    volumes:
+      # Agent config and templates. These render task-bot-specific _FILE inputs
+      # rather than the original generic app_secret_* placeholder files.
+      - ./vault/agent.hcl:/vault/config/agent.hcl:ro,z
+      - ./vault/templates:/vault/templates:ro,z
+
+      # AppRole auth input and rendered secret output.
+      - ./runtime/vault-auth:/vault/auth:ro,z
+      - ./runtime/secrets:/vault/secrets:z
+
+      # Vault CA and launcher.
+      # fix 2026-07-27: default was a p1 path; z1 keeps its CA under stacks/vault-z1.
+      - ${HOST_VAULT_CA_CERT:-/home/common/stacks/vault-z1/tls/ca.crt}:/vault/tls/ca.crt:ro,z
+      - ./scripts/start-vault-agent.sh:/usr/local/bin/start-vault-agent.sh:ro,z
+
+      # Add Vault-agent-specific mounts below this line.
+
+    tmpfs:
+      - /tmp
+      - /run
+
+    entrypoint: ["/bin/sh", "/usr/local/bin/start-vault-agent.sh"]
+
+    # fix 2026-07-27: dropped the authkey check; the sidecar is off by default.
+    healthcheck:
+      <<: *healthcheck-defaults
+      test: ["CMD-SHELL", "test -s /vault/secrets/vault-agent/.vault-agent-ready"]
+
+  # ------------------------------------------------------------
+  # Tailscale Sidecar
+  # Owns networking, Headscale login, and Traefik HTTPS routing.
+  # Traefik routes to this sidecar on edge_proxy, and the app runs
+  # inside this sidecar network namespace.
+  # ------------------------------------------------------------
+  ts-sidecar:
+    # 2026-07-27: off by default. `docker compose --profile tailnet up -d`
+    profiles:
+      - tailnet
+    image: tailscale/tailscale:${TAILSCALE_VERSION:-stable}
+    container_name: ${HOST_ID}-${SERVICE_ID}-ts-sidecar
+    hostname: ${TS_HOSTNAME}
+
+    # Standard sidecar profile.
+    <<: [*default-restart, *default-security, *resources-lean]
+    logging: *default-logging
+    group_add:
+      - "${STACK_SECRETS_GID:-1007}"
+
+    labels:
+      # Stack metadata.
+      - "com.onsaa.stack=${STACK_NAME}"
+      - "com.onsaa.role=tailscale-sidecar"
+
+      # Traefik provider selection.
+      - "traefik.enable=true"
+      - "traefik.docker.network=edge_proxy"
+
+      # Tailsecure HTTPS router.
+      # This is the active private route for all services by default.
+      - "traefik.http.routers.${STACK_NAME}-tailsecure.rule=Host(`${APP_FQDN}`)"
+      - "traefik.http.routers.${STACK_NAME}-tailsecure.entrypoints=tailsecure"
+      - "traefik.http.routers.${STACK_NAME}-tailsecure.tls=true"
+      - "traefik.http.routers.${STACK_NAME}-tailsecure.tls.certresolver=${TRAEFIK_CERT_RESOLVER}"
+
+      # Wildcard certificate hint for the private Tailnet domain.
+      - "traefik.http.routers.${STACK_NAME}-tailsecure.tls.domains[0].main=${TRAEFIK_TLS_DOMAIN_MAIN}"
+      - "traefik.http.routers.${STACK_NAME}-tailsecure.tls.domains[0].sans=${TRAEFIK_TLS_DOMAIN_SANS}"
+
+      # Optional private middleware chain from Traefik's dynamic config.
+      - "traefik.http.routers.${STACK_NAME}-tailsecure.middlewares=${TAILSECURE_MIDDLEWARES}"
+
+      # Tailsecure upstream app service.
+      # Because app uses network_mode: service:ts-sidecar, Traefik reaches
+      # the app through the sidecar container on edge_proxy.
+      - "traefik.http.routers.${STACK_NAME}-tailsecure.service=${STACK_NAME}"
+      - "traefik.http.services.${STACK_NAME}.loadbalancer.server.port=${APP_CONTAINER_PORT}"
+
+    depends_on:
+      vault-agent:
+        condition: service_healthy
+
+    # Tailscale needs root plus tun/network capabilities.
+    # Tailscale requires container-root for /dev/net/tun. Its state directory
+    # is rootless-mapped, so the two filesystem capabilities below are needed.
+    user: "0:0"
+    read_only: true
+    cap_drop:
+      - ALL
+    cap_add:
+      - NET_ADMIN
+      - NET_RAW
+      - DAC_OVERRIDE
+      - FOWNER
+    sysctls:
+      net.ipv4.conf.all.src_valid_mark: "1"
+    devices:
+      - /dev/net/tun:/dev/net/tun
+
+    extra_hosts:
+      # fix 2026-07-27: 172.21.0.10 is not routable on z1; use the public IP.
+      - "${HS_FQDN:-h.onsaa.org}:${HS_BOOTSTRAP_IP:-135.181.153.81}"
+      - "${ID_FQDN:-id.onsaa.org}:${HS_BOOTSTRAP_IP:-135.181.153.81}"
+
+      # Add internal bootstrap host mappings below this line.
+
+    volumes:
+      # Tailscale state and rendered secrets.
+      - ./data/tailscale:/var/lib/tailscale:z
+      - ./runtime/secrets/ts-sidecar:/run/stack-secrets:ro,z
+      - ./runtime/control:/run/stack-control:z
+
+      # Sidecar launcher.
+      - ./scripts/start-tailscale-sidecar.sh:/usr/local/bin/start-tailscale-sidecar.sh:ro,z
+
+      # Add sidecar-specific mounts below this line.
+
+    tmpfs:
+      - /tmp
+      - /run
+
+    entrypoint: ["/bin/sh", "/usr/local/bin/start-tailscale-sidecar.sh"]
+
+    environment:
+      TZ: ${TZ:-America/Toronto}
+      # Local app endpoint for optional tailscale serve.
+      APP_CONTAINER_PORT: ${APP_CONTAINER_PORT}
+
+      # Tailscale runtime.
+      # Bootstrap with a reusable authkey from Vault, then apply final tags
+      # server-side in Headscale after the node reaches Running.
+      TS_STATE_DIR: /var/lib/tailscale
+      # /run is root-owned under the capability-restricted rootless runtime.
+      TS_SOCKET_DIR: /tmp/tailscale
+      TS_USERSPACE: "false"
+      TS_HOSTNAME: ${TS_HOSTNAME}
+      TS_LOGIN_SERVER: ${TS_LOGIN_SERVER}
+      TS_EXTRA_ARGS: ${TS_EXTRA_ARGS:-}
+      TS_BOOTSTRAP_EXTRA_ARGS: ${TS_BOOTSTRAP_EXTRA_ARGS:-}
+      TS_FORCE_REAUTH: ${TS_FORCE_REAUTH:-0}
+      TS_RESET_ON_REAUTH: ${TS_RESET_ON_REAUTH:-1}
+
+      # Default routing is Traefik tailsecure. Enable tailscale serve only
+      # when direct Tailscale Serve is intentionally wanted.
+      TS_SERVE_ENABLED: ${TS_SERVE_ENABLED:-0}
+
+      # Add Tailscale-sidecar env vars below this line.
+
+    healthcheck:
+      <<: *healthcheck-defaults
+      test:
+        [
+          "CMD-SHELL",
+          'status="$$(tailscale --socket=/tmp/tailscale/tailscaled.sock status --json 2>/dev/null || true)"; printf ''%s'' "$$status" | grep -Eq ''"BackendState"[[:space:]]*:[[:space:]]*"Running"''',
+        ]
+
+    networks:
+      - ts-net
+      - edge_proxy
+
+# ============================================================
+# Networks
+# Shared external networks are created by the platform stacks.
+# ============================================================
+
+networks:
+  # Private stack mesh for Vault agent support services.
+  stack-internal:
+
+  # Shared network used by Headscale/Tailscale container endpoints.
+  ts-net:
+    external: true
+    name: ts-net
+
+  # Shared Traefik upstream network for tailsecure/websecure HTTPS routing.
+  edge_proxy:
+    external: true
+    name: edge_proxy
+
+  # Shared Vault network for secret rendering.
+  vault_backend:
+    external: true
+    name: vault_backend
+
+  # Shared with the Nextcloud Tailscale sidecar, which advertises the
+  # `nextcloud` Docker DNS alias used by bot and poller for direct CalDAV.
+  # This avoids sending same-host traffic through the Tailnet/reverse proxy.
+  # fix 2026-07-27: the real network on z1 is z1_nc_stack-internal.
+  nextcloud_backend:
+    external: true
+    name: ${NEXTCLOUD_INTERNAL_NETWORK:-z1_nc_stack-internal}

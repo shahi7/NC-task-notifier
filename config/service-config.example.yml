@@ -1,0 +1,6 @@
+# Example non-secret service configuration.
+# 2026-07-27: nc-taskbot reads no config file. Runtime settings come from .env,
+# and credentials plus DELEGATIONS_JSON come from Vault. Kept as a placeholder.
+service:
+  name: nc-taskbot
+  listens: false

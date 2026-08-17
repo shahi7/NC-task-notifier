@@ -1,0 +1,7 @@
+include:
+  - project: "servers/platform-tooling"
+    ref: main
+    file: "templates/stack-repo/.gitlab-ci.yml"
+
+variables:
+  TF_ROOT: opentofu

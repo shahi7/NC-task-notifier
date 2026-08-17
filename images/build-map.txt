@@ -1,0 +1,2 @@
+# <build-context>|<dockerfile-path>|<image-name>
+app|app/Dockerfile|nc-taskbot

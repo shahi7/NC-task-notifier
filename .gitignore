@@ -1,61 +1,67 @@
+# Local environment
 .env
-*.env
+.env.*
+!.env.example
 
-trash/
-trash
-queue
-queue/
-*.json
+# Runtime secrets
+runtime/secrets/*
+!runtime/secrets/.gitkeep
+!runtime/secrets/bot/
+runtime/secrets/bot/*
+!runtime/secrets/bot/.gitkeep
+!runtime/secrets/poller/
+runtime/secrets/poller/*
+!runtime/secrets/poller/.gitkeep
+!runtime/secrets/ts-sidecar/
+runtime/secrets/ts-sidecar/*
+!runtime/secrets/ts-sidecar/.gitkeep
+!runtime/secrets/vault-agent/
+runtime/secrets/vault-agent/*
+!runtime/secrets/vault-agent/.gitkeep
 
+# Vault AppRole material
+runtime/vault-auth/*
+!runtime/vault-auth/.gitkeep
+
+# Runtime control sentinels
+runtime/control/*
+!runtime/control/.gitkeep
+
+# Persistent app data and state (recursive: catches any data/<subdir>/)
+data/**
+!data/app/
+!data/app/.gitkeep
+!data/tailscale/
+!data/tailscale/.gitkeep
+# added 2026-07-27: signal-cli state moved under data/ so it is ignored like the rest
+!data/signal/
+!data/signal/.gitkeep
+
+# Backups
+backups/*
+!backups/.gitkeep
+
+# Python build artifacts
 __pycache__/
-*.py[cod]
-*.pyo
-*.pyd
-.Python
-.venv/
-venv/
-env/
-pip-log.txt
-pip-delete-this-directory.txt
-*.egg-info/
-dist/
-build/
-.eggs/
+*.pyc
 
-task_state.json
-sent_notifications_*.json
-signal-data/
-
-.DS_Store
-.DS_Store?
-
-.vscode/
-.idea/
-*.swp
-*.swo
-*~
-
+# Logs and temp files
 *.log
-logs/
+*.tmp
+*.bak*
+.DS_Store
 
-*.service
-*.timer
-src/calendar_sync_token.txt
-src-prod/calendar_sync_token.txt
-src-prod/secrets/user_map_signal
-src-prod/secrets/user_map_dc
-src-prod/secrets/signal_sender
-src-prod/secrets/nextcloud_user
-src-prod/secrets/nextcloud_pass
-src-prod/secrets/discord_bot_token
-src-prod/secrets/calendar_url
-src-prod/secrets/calendar_name
+# OpenTofu / Terraform-compatible state artifacts
+.terraform/
+.tofu/
+*.tfstate
+*.tfstate.*
+*.tfvars
+*.tfvars.json
+crash.log
+crash.*.log
 
-vault/role_id
-vault/secret_id
-src-prod/vault-agent/role_id
-src-prod/vault-agent/secret_id
-src-prod/taskbot-policy.hcl
-src-prod/test/user_map_dc__test.txt
-src-prod/data/sync_tokens/test.txt
-src-prod/data/sync_tokens/test.txt
+# These directories become Docker-owned at runtime. Do not descend into them
+# during status or staging, since their live contents are never source files.
+runtime/
+data/tailscale/

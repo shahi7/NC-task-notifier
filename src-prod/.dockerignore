@@ -1,7 +1,0 @@
-.env
-secrets/
-vault/role_id
-vault/secret_id
-data/
-__pycache__/
-*.pyc
