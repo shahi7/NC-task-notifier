@@ -104,12 +104,14 @@ Assignees are the people who receive task DMs and interact with them in Discord.
 
 ## Configuration
 
-The most important environment values usually include:
+The user-provided environment variables are:
 
 - `NEXTCLOUD_USER` and `NEXTCLOUD_PASS`: app credentials for the delegator Nextcloud account, generated in account settings.
 - `CALENDAR_URL`: URL for target task calendar.
 - `USER_MAP_DC`: mapping from task assignee labels to Discord user IDs.
 - `REMINDER_DELTAS`: how long before a deadline reminder should be sent.
+
+To start, configure a `.env` file with all required secrets. Run `setup-service.sh` from the stack root with the `--import-env` flag set. This will add the secrets to Vault and set up the AppRole credentials (see [docs/secrets.md]([url](https://github.com/shahi7/NC-task-notifier/blob/main/docs/secrets.md)) for more details). To start the bot, run `docker compose up --build`. 
 
 ## Running the system
 
