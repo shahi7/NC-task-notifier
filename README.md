@@ -109,9 +109,9 @@ The user-provided environment variables are:
 - `NEXTCLOUD_USER` and `NEXTCLOUD_PASS`: app credentials for the delegator Nextcloud account, generated in account settings.
 - `CALENDAR_URL`: URL for target task calendar.
 - `USER_MAP_DC`: mapping from task assignee labels to Discord user IDs.
-- `REMINDER_DELTAS`: how long before a deadline reminder should be sent.
+- `REMINDER_DELTAS`: how long before a deadline reminder should be sent (default value set).
 
-To start, configure a `.env` file with all required secrets. Run `setup-service.sh` from the stack root with the `--import-env` flag set. This will add the secrets to Vault and set up the AppRole credentials (see [docs/secrets.md]([url](https://github.com/shahi7/NC-task-notifier/blob/main/docs/secrets.md)) for more details). To start the bot, run `docker compose up --build`. 
+To start, run `setup-service.sh` from the stack root with the `--vault-only` flag set and follow the instructions. This configures the Vault Agent and sets up the AppRole credentials (see [docs/secrets.md]([url](https://github.com/shahi7/NC-task-notifier/blob/main/docs/secrets.md)) for more details). Run the `vault-op` script to manually add all required secrets and check to confirm the Vault Agent correctly rendered them. Finally, to start the bot, run `docker compose up --build`. 
 
 ## Running the system
 
