@@ -111,7 +111,11 @@ The user-provided environment variables are:
 - `USER_MAP_DC`: mapping from task assignee labels to Discord user IDs.
 - `REMINDER_DELTAS`: how long before a deadline reminder should be sent (default value set).
 
-To start, run `setup-service.sh` from the stack root with the `--vault-only` and `--skip-env-import` flags set, and follow the instructions. The script will ask for a TLS certificate; your server should have a single vault stack with a certificate. This service configures the Vault Agent and AppRole credentials (see [docs/secrets.md]([url](https://github.com/shahi7/NC-task-notifier/blob/main/docs/secrets.md)) for more details). Run the `vault-operator.sh` script to manually add all required secrets to your desired `VAULT_KV_MOUNT_PATH` (choose the `kv > edit-secrets` workflow) and check to confirm the Vault Agent correctly rendered them. Finally, to start the bot, run `docker compose up --build -d`. 
+A vault root token is needed to run the setup scripts. 
+
+Run `setup-service.sh` from the stack root with the `--vault-only` and `--skip-env-import` flags set, and follow the instructions. The script will ask for a TLS certificate; your server should have a single vault stack with a certificate. This service configures the Vault Agent and AppRole credentials (see [docs/secrets.md]([url](https://github.com/shahi7/NC-task-notifier/blob/main/docs/secrets.md)) for more details). 
+
+Find the `.env.example` file and use it as a template before loading the variables into the session. Run the `vault-operator.sh` script to manually add all required secrets to your desired `VAULT_KV_MOUNT_PATH` (choose the `kv > edit-path` workflow to create a mount path for your stack). Finally, to start the bot, run `docker compose up --build -d`. 
 
 ## Running the system
 
