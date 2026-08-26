@@ -17,6 +17,9 @@ RUN curl -fsSL -o /usr/local/bin/supercronic https://github.com/aptible/supercro
 # build context is this directory, so the app lands directly in /app
 COPY . .
 
+# ensuring the image and all scripts have required perms
+RUN chown -R 1000:1000 /app \ && chmod -R a+rX /app \ && find /app -type f \( -name '*.py' -o -name '*.crontab' \) -exec chmod 0644 {} \;
+
 RUN mkdir -p /app/data/queue/pending /app/data/queue/processing /app/data/queue/done /app/data/queue/failed
 
 # compose overrides this and waits on the rendered secrets first
