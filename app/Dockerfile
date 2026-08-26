@@ -8,6 +8,10 @@ WORKDIR /app
 
 RUN apt-get update && apt-get install -y --no-install-recommends curl ca-certificates && rm -rf /var/lib/apt/lists/*
 
+# nc certifcate
+COPY vault-ca.crt /usr/local/share/ca-certificates/vault-ca.crt
+RUN update-ca-certificates
+
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
