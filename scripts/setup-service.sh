@@ -358,12 +358,13 @@ policy_file() {
   data="$(kv_data_api_path)"
   meta="$(kv_metadata_path)"
   cat > "$f" <<POLICY
+# priveleged policy to allow discord slash commands to modify user map in
 path "${data}" {
-  capabilities = ["read"]
+  capabilities = ["create", "read", "update"]
 }
 
 path "${meta}" {
-  capabilities = ["read", "list"]
+  capabilities = ["create", "read", "update", "list"]
 }
 POLICY
   printf '%s' "$f"
