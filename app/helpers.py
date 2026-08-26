@@ -201,7 +201,7 @@ def get_client():
             password=NEXTCLOUD_PASS,
         )
         # use the Vault/Nextcloud CA for this session 
-        client.session.verify = "/etc/ssl/vault-ca.crt"
+        client.session.verify = "/usr/local/share/ca-certificates/vault-ca.crt"
         return client
     except Exception as e:
         print(repr(e))
