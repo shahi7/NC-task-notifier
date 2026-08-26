@@ -84,7 +84,11 @@ def vault_put_user_map_dc(delegation_id: str, user_map: dict) -> None:
         raise ValueError(f"delegation_id {delegation_id!r} not found in DELEGATIONS_JSON")
 
     # write updated delegations_json back to Vault
-    delegations_kv_path = os.getenv("VAULT_DELEGATIONS_JSON_PATH", "").strip()
+    kv_mount = os.getenv("VAULT_KV_MOUNT", "kv").strip()
+    kv_path = os.getenv("VAULT_KV_PATH", "kv/data/nc-dc-task-delegator").strip()
+    # kv_path is like "kv/data/nc-dc-task-delegator"
+    delegations_kv_path = f"{kv_path}/delegations_json"
+    
     if not delegations_kv_path:
         raise RuntimeError("VAULT_DELEGATIONS_JSON_PATH env var not set")
 
