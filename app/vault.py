@@ -27,6 +27,8 @@ def local_user_map_file(delegation_id: str) -> Path:
 
 
 def vault_get_user_map_dc(delegation_id: str) -> dict:
+    from helpers import get_secret
+
     # remove; for local testing
     if LOCAL_DEV:
         path = local_user_map_file(delegation_id)
@@ -35,6 +37,15 @@ def vault_get_user_map_dc(delegation_id: str) -> dict:
             return {}
         return json.loads(path.read_text(encoding="utf-8") or "{}")
 
+    # prefer inline user_map_dc from delegations_json
+    delegations = json.loads(get_secret("DELEGATIONS_JSON", "[]") or "[]")
+    for d in delegations:
+        if str(d.get("id", "")).strip() == delegation_id:
+            inline_map = d.get("user_map_dc")
+            if isinstance(inline_map, dict) and inline_map:
+                return inline_map
+
+    # fallback to legacy separate KV path
     r = requests.get(
         f"{VAULT_ADDR}/v1/{user_map_path_for(delegation_id)}",
         headers={"X-Vault-Token": VAULT_BOT_TOKEN},
@@ -48,6 +59,8 @@ def vault_get_user_map_dc(delegation_id: str) -> dict:
 
 
 def vault_put_user_map_dc(delegation_id: str, user_map: dict) -> None:
+    from helpers import get_secret
+
     # remove; for local testing
     if LOCAL_DEV:
         path = local_user_map_file(delegation_id)
@@ -55,6 +68,35 @@ def vault_put_user_map_dc(delegation_id: str, user_map: dict) -> None:
         path.write_text(json.dumps(user_map, indent=2), encoding="utf-8")
         return
 
+    # 1) update user_map_dc in delegations_json
+    delegations_raw = get_secret("DELEGATIONS_JSON", "[]") or "[]"
+    delegations = json.loads(delegations_raw)
+
+    found = False
+    for d in delegations:
+        if str(d.get("id", "")).strip() == delegation_id:
+            d["user_map_dc"] = user_map
+            found = True
+            break
+
+    if not found:
+        # TODO: create a new delegation entry
+        raise ValueError(f"delegation_id {delegation_id!r} not found in DELEGATIONS_JSON")
+
+    # write updated delegations_json back to Vault
+    delegations_kv_path = os.getenv("VAULT_DELEGATIONS_JSON_PATH", "").strip()
+    if not delegations_kv_path:
+        raise RuntimeError("VAULT_DELEGATIONS_JSON_PATH env var not set")
+
+    r = requests.post(
+        f"{VAULT_ADDR}/v1/{delegations_kv_path}",
+        headers={"X-Vault-Token": VAULT_BOT_TOKEN},
+        json={"data": {"value": json.dumps(delegations)}},
+        timeout=20,
+    )
+    r.raise_for_status()
+
+    # 2) also write to the old separate KV path (legacy)
     r = requests.post(
         f"{VAULT_ADDR}/v1/{user_map_path_for(delegation_id)}",
         headers={"X-Vault-Token": VAULT_BOT_TOKEN},
