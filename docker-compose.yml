@@ -133,6 +133,7 @@ services:
       SIGNAL_SENDER_FILE: /run/stack-secrets/signal_sender
       VAULT_BOT_TOKEN_FILE: /run/stack-secrets/vault_bot_token
       DELEGATIONS_JSON_FILE: /run/stack-secrets/delegations_json
+      VAULT_DELEGATIONS_JSON_PATH: secret/data/stacks/nc-taskbot/delegations_json
 
     depends_on:
       vault-agent:
@@ -207,6 +208,7 @@ services:
       # fix 2026-07-27: poller needs this too now that it reads user maps.
       VAULT_BOT_TOKEN_FILE: /run/stack-secrets/vault_bot_token
       DELEGATIONS_JSON_FILE: /run/stack-secrets/delegations_json
+      VAULT_DELEGATIONS_JSON_PATH: secret/data/stacks/nc-taskbot/delegations_json
 
     depends_on:
       vault-agent:
