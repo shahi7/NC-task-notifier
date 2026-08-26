@@ -1,6 +1,5 @@
-Warning: your password will expire in 0 days.
 #!/usr/bin/env bash
-# Prime01 Vault Operator
+# based on Prime01 Vault Operator
 #
 # One interactive operator tool for:
 #   - short-lived in-memory Vault session tokens
@@ -118,6 +117,7 @@ CURRENT_TOKEN=""
 SUPPLIED_TOKEN=""
 SESSION_TOKEN=""
 SESSION_TTL="${SESSION_TTL:-15m}"
+# shellcheck disable=SC2034  # tracked for future external inspection, not read in-file
 SESSION_TOKEN_MINTED=0
 SESSION_TOKEN_AUTO_REVOKE=1
 
@@ -217,10 +217,12 @@ validate_project() {
 
 sanitize_abs_path() {
   local p="$1"
+  p="${p%$'\r'}"
+  p="${p%$'\n'}"
   [[ -n "$p" ]] || return 1
-  [[ "$p" == /* ]] || return 1
-  [[ "$p" != *$'\n'* && "$p" != *$'\0'* ]] || return 1
-  (( ${#p} <= 4096 )) || return 1
+  [[ "$p" == /* ]] || return 2
+  [[ "$p" != *$'\n'* && "$p" != *$'\r'* && "$p" != *$'\0'* ]] || return 3
+  (( ${#p} <= 4096 )) || return 4
   return 0
 }
 
@@ -900,6 +902,7 @@ This is powerful, but it is not the real root token." "yes"; then
 
     SESSION_TOKEN="$token"
     CURRENT_TOKEN="$SESSION_TOKEN"
+    # shellcheck disable=SC2034  # tracked for future external inspection, not read in-file
     SESSION_TOKEN_MINTED=1
     SESSION_TOKEN_AUTO_REVOKE=1
     SUPPLIED_TOKEN=""
@@ -927,6 +930,7 @@ Use the supplied token directly for this operator run?
 It will stay in memory only and will NOT be auto-revoked by this script." "yes"; then
       CURRENT_TOKEN="$SUPPLIED_TOKEN"
       SESSION_TOKEN=""
+      # shellcheck disable=SC2034  # tracked for future external inspection, not read in-file
       SESSION_TOKEN_MINTED=0
       SESSION_TOKEN_AUTO_REVOKE=0
       SUPPLIED_TOKEN=""
@@ -961,6 +965,7 @@ Use the supplied token directly for this operator run instead?
 It will stay in memory only and will NOT be auto-revoked by this script." "yes"; then
       CURRENT_TOKEN="$SUPPLIED_TOKEN"
       SESSION_TOKEN=""
+      # shellcheck disable=SC2034  # tracked for future external inspection, not read in-file
       SESSION_TOKEN_MINTED=0
       SESSION_TOKEN_AUTO_REVOKE=0
       SUPPLIED_TOKEN=""
@@ -975,6 +980,7 @@ It will stay in memory only and will NOT be auto-revoked by this script." "yes";
   token="$(jq -er '.auth.client_token' <<< "$resp")" || die "Could not parse session token"
   SESSION_TOKEN="$token"
   CURRENT_TOKEN="$SESSION_TOKEN"
+  # shellcheck disable=SC2034  # tracked for future external inspection, not read in-file
   SESSION_TOKEN_MINTED=1
   SESSION_TOKEN_AUTO_REVOKE=1
   SUPPLIED_TOKEN=""
@@ -1065,17 +1071,17 @@ check_any_capability() {
 # create/update a token role, then mint through that token role. This avoids a
 # confusing cascade of 403 errors followed by jq parse errors.
 preflight_token_role_mint_permissions() {
-  local policy_name="$1" role_name="$2" missing=""
+  local policy_name="$1" role_name="$2" missing_msg=""
 
-  check_any_capability "sys/policies/acl/${policy_name}" create update ||     missing+="\n- sys/policies/acl/${policy_name}: create or update"
+  check_any_capability "sys/policies/acl/${policy_name}" create update ||     missing_msg+="\n- sys/policies/acl/${policy_name}: create or update"
 
-  check_any_capability "auth/token/roles/${role_name}" create update ||     missing+="\n- auth/token/roles/${role_name}: create or update"
+  check_any_capability "auth/token/roles/${role_name}" create update ||     missing_msg+="\n- auth/token/roles/${role_name}: create or update"
 
-  check_any_capability "auth/token/create/${role_name}" update ||     missing+="\n- auth/token/create/${role_name}: update"
+  check_any_capability "auth/token/create/${role_name}" update ||     missing_msg+="\n- auth/token/create/${role_name}: update"
 
-  [[ -z "$missing" ]] && return 0
+  [[ -z "$missing_msg" ]] && return 0
 
-  ui_msg "Token lacks minting permissions" "The supplied token cannot complete this renewable break-glass workflow.\n\nMissing capabilities:${missing}\n\nUse the real root token for this bootstrap, or first update the token's policy to include token-role management for operator-* roles. Existing older break-glass tokens may be broad for KV/AppRole work but still unable to create token roles."
+  ui_msg "Token lacks minting permissions" "The supplied token cannot complete this renewable break-glass workflow.\n\nMissing capabilities:${missing_msg}\n\nUse the real root token for this bootstrap, or first update the token's policy to include token-role management for operator-* roles. Existing older break-glass tokens may be broad for KV/AppRole work but still unable to create token roles."
   return 1
 }
 
@@ -1682,6 +1688,7 @@ Type SHORT BREAK GLASS to continue:" "")" || return 1
     token="$(mint_bounded_role_token_to_memory "$role_name" "$policy_name" "$ttl" "operator-${safe_label}")"
     SESSION_TOKEN="$token"
     CURRENT_TOKEN="$SESSION_TOKEN"
+    # shellcheck disable=SC2034  # tracked for future external inspection, not read in-file
     SESSION_TOKEN_MINTED=1
     SESSION_TOKEN_AUTO_REVOKE=1
     unset token
@@ -1889,7 +1896,7 @@ create_child_token_from_current_to_file() {
 }
 
 mint_root_derived_operator_token() {
-  local old_current old_session old_minted old_auto
+  local old_current old_session
   local prompted_token lookup mode ttl label safe_label out_file token
   local policy_name policy_file timestamp
 
@@ -1903,8 +1910,6 @@ mint_root_derived_operator_token() {
 
   old_current="$CURRENT_TOKEN"
   old_session="$SESSION_TOKEN"
-  old_minted="$SESSION_TOKEN_MINTED"
-  old_auto="$SESSION_TOKEN_AUTO_REVOKE"
 
   if [[ -n "$old_session" ]]; then
     if ui_yesno "Replace active session" \
@@ -1980,6 +1985,7 @@ Recommended: yes, so old privileged children do not remain active." "yes"; then
         token="$(create_token_to_memory "auth/token/create" "$policy_name" "$ttl" "operator-${safe_label}" "false")"
         SESSION_TOKEN="$token"
         CURRENT_TOKEN="$SESSION_TOKEN"
+        # shellcheck disable=SC2034  # tracked for future external inspection, not read in-file
         SESSION_TOKEN_MINTED=1
         SESSION_TOKEN_AUTO_REVOKE=1
         unset token prompted_token
@@ -2013,6 +2019,7 @@ Recommended: yes, so old privileged children do not remain active." "yes"; then
         token="$(create_token_to_memory "auth/token/create" "root" "$ttl" "operator-${safe_label}" "false")"
         SESSION_TOKEN="$token"
         CURRENT_TOKEN="$SESSION_TOKEN"
+        # shellcheck disable=SC2034  # tracked for future external inspection, not read in-file
         SESSION_TOKEN_MINTED=1
         SESSION_TOKEN_AUTO_REVOKE=1
         unset token prompted_token
@@ -3011,9 +3018,18 @@ approle_render_flow() {
   role="$(ui_input "AppRole" "AppRole role name" "$default_role")" || return 1
   [[ -n "$role" ]] || { ui_msg "Invalid" "Role name cannot be empty."; return 1; }
   outdir="$(ui_input "AppRole destination" "Output directory for role_id and secret_id" "$default_out")" || return 1
+  outdir="${outdir%$'\r'}"
+  outdir="${outdir%$'\n'}"
   [[ -n "$outdir" ]] || { ui_msg "Invalid" "Output directory cannot be empty."; return 1; }
 
-  sanitize_abs_path "$outdir" || { ui_msg "Invalid path" "Destination must be an absolute path without control characters."; return 1; }
+  sanitize_abs_path "$outdir"
+  case $? in
+    0) ;;
+    2) ui_msg "Invalid path" "Destination must be an absolute path (starting with /)."; return 1 ;;
+    3) ui_msg "Invalid path" "Destination must not contain a newline, carriage return, or NUL byte."; return 1 ;;
+    4) ui_msg "Invalid path" "Destination is too long (max 4096 characters)."; return 1 ;;
+    *) ui_msg "Invalid path" "Destination cannot be empty."; return 1 ;;
+  esac
   if [[ -L "$outdir" ]]; then
     ui_msg "Unsafe path" "Refusing to write AppRole files into a symlinked directory."
     return 1
@@ -3867,7 +3883,7 @@ docker_select_stack() {
 }
 
 docker_select_container() {
-  local line name role service state health choice stack="${1:-}"
+  local name role service state health choice stack="${1:-}"
   local -a names=()
 
   if [[ -n "$stack" ]]; then
