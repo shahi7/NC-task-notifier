@@ -113,7 +113,7 @@ The user-provided environment variables are:
 
 A vault root token is needed to run the setup scripts. 
 
-Run `setup-service.sh` from the stack root with the `--vault-only` and `--skip-env-import` flags set, and follow the instructions. The script will ask for a TLS certificate; your server should have a single vault stack with a certificate. This service configures the Vault Agent and AppRole credentials (see [docs/secrets.md]([url](https://github.com/shahi7/NC-task-notifier/blob/main/docs/secrets.md)) for more details). 
+Run `setup-service.sh` from the stack root with the `--vault-only` and `--skip-env-import` flags set, and follow the instructions. The script will ask for a TLS certificate; your server should have a single vault stack with a certificate, with a copy at `app/vault-crt.ca`. This service configures the Vault Agent and AppRole credentials (see [docs/secrets.md]([url](https://github.com/shahi7/NC-task-notifier/blob/main/docs/secrets.md)) for more details). 
 
 Find the `.env.example` file and use it as a template before loading the variables into the session. Run the `vault-operator.sh` script to manually add all required secrets to your desired `VAULT_KV_MOUNT_PATH` (choose the `kv > edit-path` workflow to create a mount path for your stack). Finally, to start the bot, run `docker compose up --build -d`. 
 
